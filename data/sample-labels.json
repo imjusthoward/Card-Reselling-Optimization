@@ -1,0 +1,47 @@
+[
+  {
+    "listingId": "train-mercari-001",
+    "marketplace": "mercari",
+    "riskGroup": "slab",
+    "authenticity": "authentic",
+    "condition": "clean",
+    "recommendedAction": "buy",
+    "confidence": 0.95,
+    "realizedProfitJpy": 18000,
+    "notes": "Cert readable, slab clean"
+  },
+  {
+    "listingId": "train-mercari-002",
+    "marketplace": "mercari",
+    "riskGroup": "raw",
+    "authenticity": "fake",
+    "condition": "damaged",
+    "recommendedAction": "pass",
+    "confidence": 0.9,
+    "realizedProfitJpy": -12000,
+    "notes": "Too cheap, photo set weak, likely fake"
+  },
+  {
+    "listingId": "train-yahoo-001",
+    "marketplace": "yahoo_flea",
+    "riskGroup": "raw",
+    "authenticity": "authentic",
+    "condition": "damaged",
+    "recommendedAction": "watch",
+    "confidence": 0.82,
+    "realizedProfitJpy": 4200,
+    "notes": "Real card but damaged; sold at discounted exit"
+  },
+  {
+    "listingId": "train-snkrdunk-001",
+    "marketplace": "snkrdunk",
+    "riskGroup": "sealed",
+    "authenticity": "authentic",
+    "condition": "clean",
+    "recommendedAction": "buy",
+    "confidence": 0.97,
+    "realizedProfitJpy": 23500,
+    "notes": "Authenticated sealed product with strong listing evidence"
+  }
+]
+

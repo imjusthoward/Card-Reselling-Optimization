@@ -1,0 +1,25 @@
+{
+  "name": "japan-tcg-arb-copilot",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Japan-first TCG arbitrage scoring engine with trader labeling and PSA-aware risk controls.",
+  "license": "MIT",
+  "main": "dist/index.js",
+  "bin": {
+    "japan-tcg-arb": "./dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "dev": "tsx src/cli.ts",
+    "score": "tsx src/cli.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.3",
+    "tsx": "^4.19.4",
+    "typescript": "^5.8.3",
+    "vitest": "^3.1.4"
+  }
+}
+

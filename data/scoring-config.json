@@ -1,0 +1,15 @@
+{
+  "authenticityPriorProbability": 0.9,
+  "cleanConditionPriorProbability": 0.75,
+  "priorStrength": 6,
+  "minExpectedNetJpy": 5000,
+  "minExpectedReturnPct": 0.1,
+  "minLiquidityScore": 0.45,
+  "minConfidence": 0.55,
+  "minAuthProbability": 0.75,
+  "maxFakeProbability": 0.25,
+  "defaultExitCostsJpy": 7000,
+  "defaultSalvageRate": 0.15,
+  "suspiciousUnderpriceRatio": 0.45
+}
+

@@ -1,0 +1,85 @@
+[
+  {
+    "id": "mercari-001",
+    "title": "Pokemon JP PSA 10 Alt Art",
+    "marketplace": "mercari",
+    "riskGroup": "slab",
+    "askingPriceJpy": 100000,
+    "cleanExitJpy": 130000,
+    "damagedExitJpy": 105000,
+    "exitCostsJpy": 7000,
+    "salvageJpy": 15000,
+    "hasMarketplaceAuthentication": true,
+    "priceSheetMatch": true,
+    "imageEvidence": {
+      "photoCount": 5,
+      "frontVisible": true,
+      "backVisible": true,
+      "certVisible": true
+    },
+    "sellerSignals": {
+      "rating": 4.98,
+      "salesCount": 120,
+      "responseRate": 0.98
+    },
+    "liquidityScore": 0.9,
+    "conditionConfidence": 0.92,
+    "notes": ["Clean slab", "Cert visible", "Tracked price sheet match"]
+  },
+  {
+    "id": "mercari-002",
+    "title": "Pokemon JP raw card too cheap",
+    "marketplace": "mercari",
+    "riskGroup": "raw",
+    "askingPriceJpy": 30000,
+    "cleanExitJpy": 300000,
+    "damagedExitJpy": 240000,
+    "exitCostsJpy": 8000,
+    "salvageJpy": 5000,
+    "hasMarketplaceAuthentication": false,
+    "priceSheetMatch": false,
+    "imageEvidence": {
+      "photoCount": 1,
+      "frontVisible": true,
+      "backVisible": false,
+      "certVisible": false
+    },
+    "sellerSignals": {
+      "rating": 4.1,
+      "salesCount": 4,
+      "responseRate": 0.6
+    },
+    "liquidityScore": 0.2,
+    "conditionConfidence": 0.35,
+    "notes": ["One image only", "Underpriced by a wide margin"]
+  },
+  {
+    "id": "yahoo-001",
+    "title": "One Piece JP raw card with some wear",
+    "marketplace": "yahoo_flea",
+    "riskGroup": "raw",
+    "askingPriceJpy": 85000,
+    "cleanExitJpy": 120000,
+    "damagedExitJpy": 98000,
+    "exitCostsJpy": 7000,
+    "salvageJpy": 12000,
+    "hasMarketplaceAuthentication": false,
+    "priceSheetMatch": true,
+    "imageEvidence": {
+      "photoCount": 4,
+      "frontVisible": true,
+      "backVisible": true,
+      "certVisible": false,
+      "closeupsVisible": true
+    },
+    "sellerSignals": {
+      "rating": 4.78,
+      "salesCount": 53,
+      "responseRate": 0.91
+    },
+    "liquidityScore": 0.7,
+    "conditionConfidence": 0.68,
+    "notes": ["Some wear", "Likely damaged exit path"]
+  }
+]
+
