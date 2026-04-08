@@ -4,11 +4,18 @@ import { existsSync } from 'node:fs'
 import { resolve } from 'node:path'
 import {
   buildCalibration,
+  buildMvpReport,
+  buildNotificationPayload,
+  buildTraderReviewPacket,
+  classifyOpportunityStage,
+  formatMvpReport,
+  NOTIFICATION_CHANNELS,
   formatOpportunitySummary,
   scoreBatch,
   type CalibrationInput,
   type OpportunityListing,
   type ScoringConfig,
+  type NotificationChannel,
   type TraderLabel
 } from './index.js'
 
@@ -16,7 +23,8 @@ interface CliOptions {
   listingsPath: string
   labelsPath?: string
   configPath?: string
-  output: 'table' | 'json'
+  output: 'table' | 'json' | 'notify' | 'review' | 'summary'
+  channel: NotificationChannel
   limit?: number
 }
 
@@ -25,7 +33,8 @@ function parseArgs(argv: string[]): CliOptions {
     listingsPath: 'data/sample-listings.json',
     labelsPath: 'data/sample-labels.json',
     configPath: 'data/scoring-config.json',
-    output: 'table'
+    output: 'table',
+    channel: 'dashboard'
   }
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -50,10 +59,26 @@ function parseArgs(argv: string[]): CliOptions {
         break
       case '--output':
         if (!next) throw new Error('Missing value for --output')
-        if (next !== 'table' && next !== 'json') {
-          throw new Error('Output must be either "table" or "json"')
+        if (
+          next !== 'table' &&
+          next !== 'json' &&
+          next !== 'notify' &&
+          next !== 'review' &&
+          next !== 'summary'
+        ) {
+          throw new Error('Output must be one of table, json, notify, review, or summary')
         }
         options.output = next
+        index += 1
+        break
+      case '--channel':
+        if (!next) throw new Error('Missing value for --channel')
+        if (!NOTIFICATION_CHANNELS.includes(next as NotificationChannel)) {
+          throw new Error(
+            `Channel must be one of ${NOTIFICATION_CHANNELS.join(', ')}`
+          )
+        }
+        options.channel = next as NotificationChannel
         index += 1
         break
       case '--limit':
@@ -102,6 +127,28 @@ async function main(): Promise<void> {
     return
   }
 
+  if (options.output === 'notify') {
+    const notificationPayloads = limitedScores
+      .filter(score => classifyOpportunityStage(score) === 'notify')
+      .map(score => buildNotificationPayload(score, options.channel))
+    process.stdout.write(`${JSON.stringify(notificationPayloads, null, 2)}\n`)
+    return
+  }
+
+  if (options.output === 'review') {
+    const reviewPackets = limitedScores
+      .filter(score => classifyOpportunityStage(score) !== 'pass')
+      .map(score => buildTraderReviewPacket(score))
+    process.stdout.write(`${JSON.stringify(reviewPackets, null, 2)}\n`)
+    return
+  }
+
+  if (options.output === 'summary') {
+    const report = buildMvpReport(limitedScores, labels)
+    console.log(formatMvpReport(report))
+    return
+  }
+
   for (const score of limitedScores) {
     console.log(formatOpportunitySummary(score))
   }
@@ -111,4 +158,3 @@ main().catch(error => {
   console.error((error as Error).message)
   process.exitCode = 1
 })
-

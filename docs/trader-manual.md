@@ -70,6 +70,20 @@ If the listing has only one weak photo, do not force a verdict.
 4. Re-run calibration so the priors update.
 5. Compare the new output against what you actually bought and sold.
 
+## How to use the MVP outputs
+
+- `npm run notify` prints the top buy candidates as alert payloads.
+- `npm run review` prints the buy and watch candidates as review packets for manual labeling.
+- `npm run summary` prints the pipeline report, label stats, and infrastructure checklist.
+
+The trader should keep the feedback loop short:
+
+1. Inspect the alert or review packet.
+2. Mark authenticity and condition.
+3. Record the actual action you would take.
+4. Add notes that explain the evidence, not the conclusion.
+5. Add realized profit only after the item is sold.
+
 ## Recommended review format
 
 Use a short note that explains the evidence, not the conclusion.
@@ -108,4 +122,3 @@ Bad:
 - Do not use the asking price alone as a proxy for authenticity.
 - Do not leave notes empty on borderline cases.
 - Do not overcall `authentic` if you would not personally take the trade.
-

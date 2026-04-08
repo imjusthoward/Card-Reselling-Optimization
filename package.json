@@ -13,7 +13,10 @@
     "build": "tsc -p tsconfig.json",
     "test": "vitest run",
     "dev": "tsx src/cli.ts",
-    "score": "tsx src/cli.ts"
+    "score": "tsx src/cli.ts",
+    "notify": "tsx src/cli.ts --output notify",
+    "review": "tsx src/cli.ts --output review",
+    "summary": "tsx src/cli.ts --output summary"
   },
   "devDependencies": {
     "@types/node": "^22.15.3",
@@ -22,4 +25,3 @@
     "vitest": "^3.1.4"
   }
 }
-
