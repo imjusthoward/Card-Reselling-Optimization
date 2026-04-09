@@ -16,6 +16,7 @@ describe('dashboard html', () => {
     const html = renderDashboardHtml()
 
     expect(html).toContain('japan-tcg-arb-feedback-drafts')
+    expect(html).toContain('feedbackFormDirty')
     expect(html).toContain('saveFeedbackDraft')
     expect(html).toContain('shouldPreserveDetailOnRefresh')
   })

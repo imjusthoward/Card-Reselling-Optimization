@@ -364,6 +364,7 @@ const state = {
   items: [],
   selectedId: null,
   feedbackDrafts: readFeedbackDrafts(),
+  feedbackFormDirty: false,
   loading: true,
   scanning: false,
   error: null,
@@ -470,6 +471,7 @@ function saveCurrentFeedbackDraft() {
     return;
   }
 
+  state.feedbackFormDirty = true;
   saveFeedbackDraft(listingId, {
     authenticity: form.querySelector('input[name="authenticity"]:checked')?.value || 'uncertain',
     condition: form.querySelector('input[name="condition"]:checked')?.value || 'uncertain',
@@ -486,7 +488,7 @@ function shouldPreserveDetailOnRefresh() {
   }
 
   var listingId = getCurrentFormListingId(form);
-  return !!listingId && !!getFeedbackDraft(listingId);
+  return !!listingId && (state.feedbackFormDirty || !!getFeedbackDraft(listingId));
 }
 
 function escapeHtml(value) {
@@ -669,6 +671,7 @@ function fillForm(item) {
   form.querySelector('[name="reviewedAt"]').value = new Date().toISOString();
   form.querySelector('[name="confidence"]').value = confidenceValue;
   form.querySelector('[name="notes"]').value = notesValue;
+  state.feedbackFormDirty = !!draft;
 
   var auth = form.querySelector('input[name="authenticity"][value="' + authenticity + '"]');
   var cond = form.querySelector('input[name="condition"][value="' + condition + '"]');
@@ -951,7 +954,7 @@ async function refresh(options) {
       ? state.selectedId
       : (state.items[0] ? state.items[0].listingId : null);
 
-    if (!manual && shouldPreserveDetailOnRefresh()) {
+    if (shouldPreserveDetailOnRefresh()) {
       renderQueue();
       renderFeedbackList();
       renderStatus();
@@ -1000,6 +1003,7 @@ async function submitFeedback(event) {
       body: JSON.stringify(payload)
     });
     clearFeedbackDraft(payload.listingId);
+    state.feedbackFormDirty = false;
     status.textContent = 'Saved.';
     await refresh({ manual: true });
   } catch (error) {
