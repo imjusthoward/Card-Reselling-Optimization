@@ -50,16 +50,30 @@ const snkrdunkHtml = `
   </html>
 `
 
-function makeFetch(): typeof fetch {
+const shrinkMissingYahooHtml = `
+  <html>
+    <body>
+      <a href="/item/z54321" data-cl-params="sellerid:p222;price:12800;">
+        <img alt="テラスタルフェスex ボックス シュリンクなし" src="https://example.com/yahoo-shrinkless.jpg" />
+        <p>12,800<!-- -->円</p>
+      </a>
+    </body>
+  </html>
+`
+
+function makeFetch(options: { yahooHtml?: string; snkrdunkHtml?: string } = {}): typeof fetch {
+  const yahooMarkup = options.yahooHtml ?? yahooHtml
+  const snkrMarkup = options.snkrdunkHtml ?? snkrdunkHtml
+
   return (async (input: Parameters<typeof fetch>[0]) => {
     const url = typeof input === 'string' ? input : input.toString()
 
     if (url.includes('paypayfleamarket.yahoo.co.jp')) {
-      return new Response(yahooHtml, { status: 200 })
+      return new Response(yahooMarkup, { status: 200 })
     }
 
     if (url.includes('snkrdunk.com')) {
-      return new Response(snkrdunkHtml, { status: 200 })
+      return new Response(snkrMarkup, { status: 200 })
     }
 
     return new Response('<html></html>', { status: 200 })
@@ -107,6 +121,32 @@ describe('live scan', () => {
     expect(yahoo[0].sourceQuery).toBe('テラスタルフェスex ボックス')
     expect(snkr).toHaveLength(1)
     expect(snkr[0].sourceListingId).toBe('424297')
+  })
+
+  it('marks sealed listings with シュリンクなし as missing shrink wrap', async () => {
+    const watchlistPath = await createTempWatchlist()
+    const artifactStore = new MemoryArtifactStore()
+    const fetchImpl = makeFetch({ yahooHtml: shrinkMissingYahooHtml })
+
+    const result = await runLiveScan({
+      watchlistPath,
+      labelsPath: 'data/sample-labels.json',
+      configPath: 'data/scoring-config.json',
+      watchlistLimit: 1,
+      queryStrategy: 'primary',
+      sourceFilter: ['yahoo_flea'],
+      limitPerQuery: 5,
+      searchConcurrency: 1,
+      fetchTimeoutMs: 2000,
+      maxNotifications: 5,
+      maxReviews: 5,
+      artifactStore,
+      fetchImpl,
+      notifyAlex: false
+    })
+
+    expect(result.opportunities[0]?.shrinkWrapState).toBe('missing')
+    expect(result.reviews[0]?.evidence).toContain('shrink-wrap missing')
   })
 
   it('scans, writes inbox artifacts, and suppresses duplicate alerts on repeat', async () => {

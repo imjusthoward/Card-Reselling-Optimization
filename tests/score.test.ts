@@ -118,6 +118,34 @@ describe('scoreOpportunity', () => {
     expect(score.fakeProbability).toBeGreaterThan(0.2)
   })
 
+  it('penalizes sealed listings that explicitly say シュリンクなし', () => {
+    const present = scoreOpportunity(
+      makeListing({
+        id: 'sealed-present',
+        title: 'テラスタルフェスex ボックス シュリンクあり',
+        riskGroup: 'sealed',
+        shrinkWrapState: 'present',
+        conditionConfidence: 0.9
+      }),
+      calibration
+    )
+
+    const missing = scoreOpportunity(
+      makeListing({
+        id: 'sealed-missing',
+        title: 'テラスタルフェスex ボックス シュリンクなし',
+        riskGroup: 'sealed',
+        shrinkWrapState: 'missing',
+        conditionConfidence: 0.9
+      }),
+      calibration
+    )
+
+    expect(missing.reasons).toContain('shrink-wrap-missing')
+    expect(missing.cleanProbability).toBeLessThan(present.cleanProbability)
+    expect(missing.priorityScore).toBeLessThan(present.priorityScore)
+  })
+
   it('sorts the highest priority opportunity first', () => {
     const listings: OpportunityListing[] = [
       makeListing({

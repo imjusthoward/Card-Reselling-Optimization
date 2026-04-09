@@ -12,6 +12,10 @@ export const RISK_GROUPS = ['raw', 'slab', 'sealed'] as const
 
 export type RiskGroup = (typeof RISK_GROUPS)[number]
 
+export const SHRINK_WRAP_STATES = ['present', 'missing', 'unknown'] as const
+
+export type ShrinkWrapState = (typeof SHRINK_WRAP_STATES)[number]
+
 export type AuthenticityLabel = 'authentic' | 'fake' | 'uncertain'
 
 export type ConditionLabel = 'clean' | 'damaged' | 'uncertain'
@@ -37,6 +41,7 @@ export interface OpportunityListing {
   title: string
   marketplace: Marketplace
   riskGroup: RiskGroup
+  shrinkWrapState?: ShrinkWrapState
   askingPriceJpy: number
   cleanExitJpy: number
   damagedExitJpy: number

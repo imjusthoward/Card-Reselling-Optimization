@@ -14,6 +14,7 @@ import {
   type Recommendation,
   type Marketplace,
   type ScrapedListing,
+  type ShrinkWrapState,
   type ScoringConfig,
   type TraderLabel,
   type WatchlistEntry
@@ -139,6 +140,52 @@ function normalizeText(value: string): string {
     .replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>')
     .replace(/[\s\p{P}\p{S}]+/gu, '')
+}
+
+const SHRINK_WRAP_PRESENT_MARKERS = [
+  'シュリンクあり',
+  'シュリンク有り',
+  'シュリンク有',
+  'シュリンク付き',
+  'シュリンク付',
+  'factory seal',
+  'factory sealed'
+]
+
+const SHRINK_WRAP_MISSING_MARKERS = [
+  'シュリンクなし',
+  'シュリンク無し',
+  'シュリンク無',
+  'シュリンク剥がし',
+  'シュリンク剥がれ',
+  '再シュリンク',
+  '開封済',
+  '開封品',
+  '開封済み',
+  'open box',
+  'opened box'
+]
+
+function hasMarker(normalizedTitle: string, markers: readonly string[]): boolean {
+  return markers.some(marker => normalizedTitle.includes(normalizeText(marker)))
+}
+
+function inferShrinkWrapState(title: string): ShrinkWrapState | undefined {
+  const normalizedTitle = normalizeText(title)
+
+  if (!normalizedTitle) {
+    return undefined
+  }
+
+  if (hasMarker(normalizedTitle, SHRINK_WRAP_MISSING_MARKERS)) {
+    return 'missing'
+  }
+
+  if (hasMarker(normalizedTitle, SHRINK_WRAP_PRESENT_MARKERS)) {
+    return 'present'
+  }
+
+  return undefined
 }
 
 function decodeHtmlEntities(value: string): string {
@@ -317,11 +364,13 @@ function buildOpportunityListing(
   generatedAt: string,
   query: string
 ): OpportunityListing {
+  const shrinkWrapState = inferShrinkWrapState(source.title)
   const notes = unique([
     ...(watchlist.notes ?? []),
     ...(source.notes ?? []),
     `watchlist:${watchlist.id}`,
-    `query:${query}`
+    `query:${query}`,
+    ...(shrinkWrapState ? [`shrink-wrap:${shrinkWrapState}`] : [])
   ])
 
   return {
@@ -329,6 +378,7 @@ function buildOpportunityListing(
     title: source.title,
     marketplace: source.marketplace,
     riskGroup: watchlist.riskGroup,
+    shrinkWrapState,
     askingPriceJpy: source.askingPriceJpy,
     cleanExitJpy: watchlist.cleanExitJpy,
     damagedExitJpy: watchlist.damagedExitJpy,
@@ -349,10 +399,17 @@ function buildOpportunityListing(
             rating: source.sellerRating,
             salesCount: source.sellerSalesCount,
             responseRate: source.sellerResponseRate
-          }
-        : undefined,
+        }
+      : undefined,
     liquidityScore: watchlist.liquidityScore,
-    conditionConfidence: watchlist.riskGroup === 'sealed' ? 0.66 : 0.58,
+    conditionConfidence:
+      watchlist.riskGroup === 'sealed'
+        ? shrinkWrapState === 'missing'
+          ? 0.18
+          : shrinkWrapState === 'present'
+            ? 0.74
+            : 0.66
+        : 0.58,
     sourceUrl: source.sourceUrl,
     sourceListingId: source.sourceListingId,
     sourceQuery: query || source.sourceQuery,

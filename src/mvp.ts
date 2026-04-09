@@ -210,6 +210,14 @@ export function buildTraderReviewPacket(
     addEvidence(evidence, 'price-sheet-match')
   }
 
+  if (score.listing.shrinkWrapState === 'missing') {
+    addEvidence(evidence, 'shrink-wrap missing')
+  }
+
+  if (score.listing.shrinkWrapState === 'present') {
+    addEvidence(evidence, 'shrink-wrap present')
+  }
+
   if (imageEvidence?.photoCount != null) {
     addEvidence(evidence, `${imageEvidence.photoCount} photos`)
   }
@@ -257,6 +265,8 @@ export function buildTraderReviewPacket(
   const question =
     stage === 'notify'
       ? 'Confirm whether this is a real buy candidate and whether the photos support the condition.'
+      : score.listing.riskGroup === 'sealed'
+        ? 'Confirm authenticity, whether the factory seal or shrink wrap is present, and whether this should stay on the watch list.'
       : 'Confirm authenticity, condition, and whether this should stay on the watch list.'
 
   return {

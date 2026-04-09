@@ -108,6 +108,27 @@ function imageEvidenceAdjustment(
   return { authDelta, cleanDelta, reasons }
 }
 
+function shrinkWrapAdjustment(
+  listing: OpportunityListing
+): { cleanDelta: number; reasons: string[] } {
+  const reasons: string[] = []
+  let cleanDelta = 0
+
+  if (listing.riskGroup !== 'sealed') {
+    return { cleanDelta, reasons }
+  }
+
+  if (listing.shrinkWrapState === 'missing') {
+    cleanDelta -= 0.22
+    addReason(reasons, 'shrink-wrap-missing')
+  } else if (listing.shrinkWrapState === 'present') {
+    cleanDelta += 0.06
+    addReason(reasons, 'shrink-wrap-present')
+  }
+
+  return { cleanDelta, reasons }
+}
+
 export function scoreOpportunity(
   listing: OpportunityListing,
   calibration: CalibrationProfile,
@@ -138,6 +159,10 @@ export function scoreOpportunity(
   authProbability += imageAdjustment.authDelta
   cleanProbability += imageAdjustment.cleanDelta
   reasons.push(...imageAdjustment.reasons)
+
+  const shrinkWrap = shrinkWrapAdjustment(listing)
+  cleanProbability += shrinkWrap.cleanDelta
+  reasons.push(...shrinkWrap.reasons)
 
   authProbability += computeSellerAdjustment(listing)
 
