@@ -144,6 +144,11 @@ h2 {
   display: grid;
 }
 
+#feedback-list {
+  display: grid;
+  gap: 0;
+}
+
 .item,
 .card,
 .empty {
@@ -383,6 +388,25 @@ textarea { min-height: 96px; resize: vertical; }
 .health-row strong {
   display: block;
   margin-bottom: 4px;
+}
+
+.feedback-summary {
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.5);
+}
+
+.feedback-summary .row {
+  margin-top: 8px;
+}
+
+.feedback-row {
+  display: grid;
+  gap: 8px;
+}
+
+.feedback-row .subtle {
+  line-height: 1.4;
 }
 
 .empty {
@@ -649,6 +673,54 @@ function summarizeRiskGroups(opportunities) {
   return summary;
 }
 
+function summarizeFeedback(labels) {
+  var summary = {
+    total: 0,
+    authentic: 0,
+    fake: 0,
+    uncertainAuthenticity: 0,
+    clean: 0,
+    damaged: 0,
+    uncertainCondition: 0,
+    buy: 0,
+    watch: 0,
+    pass: 0
+  };
+
+  labels.forEach(function (entry) {
+    if (!entry) {
+      return;
+    }
+
+    summary.total += 1;
+    if (entry.authenticity === 'authentic') {
+      summary.authentic += 1;
+    } else if (entry.authenticity === 'fake') {
+      summary.fake += 1;
+    } else {
+      summary.uncertainAuthenticity += 1;
+    }
+
+    if (entry.condition === 'clean') {
+      summary.clean += 1;
+    } else if (entry.condition === 'damaged') {
+      summary.damaged += 1;
+    } else {
+      summary.uncertainCondition += 1;
+    }
+
+    if (entry.recommendedAction === 'buy') {
+      summary.buy += 1;
+    } else if (entry.recommendedAction === 'watch') {
+      summary.watch += 1;
+    } else if (entry.recommendedAction === 'pass') {
+      summary.pass += 1;
+    }
+  });
+
+  return summary;
+}
+
 function renderSourceHealth() {
   if (!nodes.health) {
     return;
@@ -663,6 +735,9 @@ function renderSourceHealth() {
   var sourceSummaries = Array.isArray(latest.sourceSummaries) ? latest.sourceSummaries : [];
   var opportunities = Array.isArray(latest.opportunities) ? latest.opportunities : [];
   var riskGroups = summarizeRiskGroups(opportunities);
+  var calibrationLabels = latest.report && latest.report.labels
+    ? Number(latest.report.labels.totalLabels || 0)
+    : 0;
   var slabMatches = opportunities.filter(function (entry) {
     return entry && entry.riskGroup === 'slab';
   }).length;
@@ -683,9 +758,11 @@ function renderSourceHealth() {
     '<span class="pill">raw ' + String(riskGroups.raw) + '</span>',
     '<span class="pill">slab ' + String(riskGroups.slab) + '</span>',
     '<span class="pill">sealed ' + String(riskGroups.sealed) + '</span>',
+    '<span class="pill">labels ' + String(calibrationLabels) + '</span>',
     '</div>',
     '<strong>Coverage snapshot</strong>',
     '<div class="subtle">slab/graded matches ' + String(slabMatches) + ' • watchlist price-sheet flags ' + String(priceSheetMatches) + ' • shrinkless sealed ' + String(missingShrinkWrap) + '</div>',
+    '<div class="subtle">Alex feedback is merged into calibration on the next scan.</div>',
     '</div>',
     '</div>'
   ];
@@ -909,21 +986,44 @@ function renderFeedbackList() {
     return;
   }
 
-  nodes.feedback.innerHTML = state.feedback.slice(0, 5).map(function (entry) {
-    var reviewedAt = entry.reviewedAt ? formatClock(entry.reviewedAt) : 'n/a';
-    return [
-      '<div class="card">',
-      '<div class="meta">',
-      '<span class="pill">' + escapeHtml(entry.authenticity || 'uncertain') + '</span>',
-      '<span class="pill">' + escapeHtml(entry.condition || 'uncertain') + '</span>',
-      '<span class="pill">' + escapeHtml(entry.recommendedAction || 'watch') + '</span>',
-      '<span class="pill timestamp">' + escapeHtml(reviewedAt) + '</span>',
-      '</div>',
-      '<div class="title" style="font-size: 0.95rem; margin-top: 8px;">' + escapeHtml(entry.listingId || 'unknown listing') + '</div>',
-      '<div class="subtle">' + escapeHtml(entry.notes || entry.followUp || 'No notes provided.') + '</div>',
-      '</div>'
-    ].join('');
-  }).join('');
+  var summary = summarizeFeedback(state.feedback);
+  var summaryCountText = String(summary.total) + ' labels';
+  nodes.feedback.innerHTML = [
+    '<div class="feedback-summary">',
+    '<div class="meta">',
+    '<span class="pill">feedback ' + summaryCountText + '</span>',
+    '<span class="pill">auth ' + String(summary.authentic) + '/' + String(summary.fake) + '/' + String(summary.uncertainAuthenticity) + '</span>',
+    '<span class="pill">condition ' + String(summary.clean) + '/' + String(summary.damaged) + '/' + String(summary.uncertainCondition) + '</span>',
+    '<span class="pill">action ' + String(summary.buy) + '/' + String(summary.watch) + '/' + String(summary.pass) + '</span>',
+    '</div>',
+    '<strong>Calibration feed</strong>',
+    '<div class="subtle">Alex labels are used in the next calibration pass and stay visible here for review.</div>',
+    '</div>',
+    state.feedback.map(function (entry) {
+      var reviewedAt = entry.reviewedAt ? formatClock(entry.reviewedAt) : 'n/a';
+      var note = entry.notes || entry.followUp || 'No notes provided.';
+      var sourceQuery = entry.sourceQuery || 'no query';
+      var sourceListingId = entry.sourceListingId || 'n/a';
+      return [
+        '<div class="card feedback-row">',
+        '<div class="meta">',
+        '<span class="pill">' + escapeHtml(entry.authenticity || 'uncertain') + '</span>',
+        '<span class="pill">' + escapeHtml(entry.condition || 'uncertain') + '</span>',
+        '<span class="pill">' + escapeHtml(entry.recommendedAction || 'watch') + '</span>',
+        '<span class="pill timestamp">' + escapeHtml(reviewedAt) + '</span>',
+        '</div>',
+        '<div class="title" style="font-size: 0.95rem; margin-top: 4px;">' + escapeHtml(entry.listingId || 'unknown listing') + '</div>',
+        '<div class="subtle">' + escapeHtml(note) + '</div>',
+        '<div class="row">',
+        '<span class="pill">' + escapeHtml(entry.marketplace || 'other') + '</span>',
+        '<span class="pill">' + escapeHtml(entry.riskGroup || 'raw') + '</span>',
+        '<span class="pill">' + escapeHtml(sourceQuery) + '</span>',
+        '<span class="pill">source ' + escapeHtml(sourceListingId) + '</span>',
+        '</div>',
+        '</div>'
+      ].join('');
+    }).join('')
+  ].join('');
 }
 
 function renderDetail() {
@@ -1365,7 +1465,7 @@ export function renderDashboardHtml(): string {
         <section>
           <h2>Selected listing</h2>
           <div id="detail-view"></div>
-          <h2>Recent labels</h2>
+          <h2>Feedback history</h2>
           <div id="feedback-list"></div>
         </section>
       </main>

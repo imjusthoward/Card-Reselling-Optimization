@@ -7,6 +7,7 @@ describe('dashboard html', () => {
 
     expect(html).toContain('Live queue')
     expect(html).toContain('Selected listing')
+    expect(html).toContain('Feedback history')
     expect(html).toContain('feedback-form')
     expect(html).toContain('scan-button')
     expect(html).toContain('Copy digest')
@@ -23,6 +24,8 @@ describe('dashboard html', () => {
     expect(html).toContain('sourceSummaries')
     expect(html).toContain('scrapedAt')
     expect(html).toContain('signal-strong')
+    expect(html).toContain('feedback-summary')
+    expect(html).toContain('feedback-row')
     expect(html).toContain('reviewedAt')
   })
 })

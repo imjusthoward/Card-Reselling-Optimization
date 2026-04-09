@@ -662,6 +662,7 @@ function buildAlexDigest(
     `generatedAt=${generatedAt}`,
     `pipeline=${report.pipeline.total} | notify=${report.pipeline.notifyCount} | review=${report.pipeline.reviewCount} | pass=${report.pipeline.passCount}`,
     `precision=${report.matched.precision == null ? 'n/a' : `${(report.matched.precision * 100).toFixed(1)}%`} | falsePositiveRate=${report.matched.falsePositiveRate == null ? 'n/a' : `${(report.matched.falsePositiveRate * 100).toFixed(1)}%`}`,
+    `calibrationLabels=${report.labels.totalLabels}`,
     `coverage=raw ${riskGroupCounts.raw} | slab ${riskGroupCounts.slab} | sealed ${riskGroupCounts.sealed}`,
     compactSourceSummary.length > 0 ? `sources=${compactSourceSummary}` : 'sources=none',
     unavailableSummary.length > 0 ? `source-notes=${unavailableSummary.join(' | ')}` : 'source-notes=none',
@@ -960,7 +961,7 @@ export async function recordAlexFeedback(
 
 export async function listAlexFeedback(
   artifactStore: ArtifactStore,
-  limit = 50
+  limit = 100
 ): Promise<FeedbackEntry[]> {
   const entries = (await artifactStore.readJson<FeedbackEntry[]>('feedback/latest.json')) ?? []
   return entries.slice(0, limit)
@@ -973,13 +974,18 @@ export async function runLiveScan(
   const scanId = randomUUID()
   const watchlist = await loadWatchlist(options.watchlistPath)
   const selectedWatchlist = watchlist.slice(0, options.watchlistLimit ?? watchlist.length)
+  const artifactStore =
+    options.artifactStore ??
+    createArtifactStore(process.env.ARB_STORAGE_BUCKET ?? process.env.ARB_EVIDENCE_BUCKET)
   const labels = await loadJson<TraderLabel[]>(
     resolveWorkflowPath(options.labelsPath, DEFAULT_LABELS_PATH)
   )
+  const alexFeedback = await listAlexFeedback(artifactStore, 100)
+  const calibrationLabels = [...labels, ...alexFeedback]
   const scoringConfig = await loadJson<Partial<ScoringConfig & CalibrationInput>>(
     resolveWorkflowPath(options.configPath, DEFAULT_CONFIG_PATH)
   )
-  const calibration = buildCalibration(labels, scoringConfig)
+  const calibration = buildCalibration(calibrationLabels, scoringConfig)
   const sourceFilter = options.sourceFilter ?? [...DEFAULT_LIVE_SOURCES]
   const queryStrategy = options.queryStrategy ?? 'all'
   const fetchImpl = options.fetchImpl ?? fetch
@@ -988,9 +994,6 @@ export async function runLiveScan(
   const fetchTimeoutMs = options.fetchTimeoutMs ?? 12_000
   const maxNotifications = options.maxNotifications ?? 5
   const maxReviews = options.maxReviews ?? 5
-  const artifactStore =
-    options.artifactStore ??
-    createArtifactStore(process.env.ARB_STORAGE_BUCKET ?? process.env.ARB_EVIDENCE_BUCKET)
 
   const tasks = buildSearchTasks(selectedWatchlist, sourceFilter, queryStrategy)
   const taskResults = await runWithConcurrency(tasks, searchConcurrency, async task => {
@@ -1102,7 +1105,7 @@ export async function runLiveScan(
 
   const scores = scoreBatch(opportunities, calibration, scoringConfig)
   const limitedScores = scores
-  const report = buildMvpReport(limitedScores, labels)
+  const report = buildMvpReport(limitedScores, calibrationLabels)
   const notifications = limitedScores
     .filter(score => score.recommendation === 'buy')
     .slice(0, maxNotifications)

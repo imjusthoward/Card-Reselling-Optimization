@@ -116,6 +116,13 @@ async function createTempWatchlist(
   return watchlistPath
 }
 
+async function createTempLabelsFile(entries: unknown[] = []): Promise<string> {
+  const dir = await mkdtemp(join(tmpdir(), 'arb-labels-'))
+  const labelsPath = join(dir, 'labels.json')
+  await writeFile(labelsPath, `${JSON.stringify(entries, null, 2)}\n`, 'utf8')
+  return labelsPath
+}
+
 describe('live scan', () => {
   it('parses live marketplace search pages', () => {
     const yahoo = parseMarketplaceSearchPage(
@@ -206,6 +213,52 @@ describe('live scan', () => {
 
     expect(secondSelection.freshNotifications).toHaveLength(0)
     expect(secondSelection.freshReviews).toHaveLength(0)
+  })
+
+  it('folds Alex feedback into the next calibration pass', async () => {
+    const watchlistPath = await createTempWatchlist()
+    const labelsPath = await createTempLabelsFile([])
+    const artifactStore = new MemoryArtifactStore()
+    const fetchImpl = makeFetch()
+
+    await artifactStore.writeJson('feedback/latest.json', [
+      {
+        listingId: 'snkrdunk:567433',
+        marketplace: 'snkrdunk',
+        riskGroup: 'sealed',
+        authenticity: 'authentic',
+        condition: 'clean',
+        recommendedAction: 'pass',
+        confidence: 1,
+        notes: 'シュリンクなし, not factory sealed, calculated at sealed price',
+        sourceUrl: 'https://snkrdunk.com/apparels/567433',
+        sourceListingId: '567433',
+        sourceQuery: 'ポケモンカード151 ボックス',
+        reviewer: 'alex',
+        reviewedAt: '2026-04-09T10:20:40.893Z'
+      }
+    ])
+
+    const result = await runLiveScan({
+      watchlistPath,
+      labelsPath,
+      configPath: 'data/scoring-config.json',
+      watchlistLimit: 1,
+      queryStrategy: 'primary',
+      sourceFilter: ['yahoo_flea', 'snkrdunk'],
+      limitPerQuery: 5,
+      searchConcurrency: 2,
+      fetchTimeoutMs: 2000,
+      maxNotifications: 5,
+      maxReviews: 5,
+      artifactStore,
+      fetchImpl,
+      notifyAlex: false
+    })
+
+    expect(result.report.labels.totalLabels).toBe(1)
+    expect(result.alexDigest).toContain('calibrationLabels=1')
+    expect(result.alexDigest).toContain('sources=')
   })
 
   it('marks mercari as unsupported in the scan digest when the public HTML has no cards', async () => {
