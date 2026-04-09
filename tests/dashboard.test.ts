@@ -11,4 +11,12 @@ describe('dashboard html', () => {
     expect(html).toContain('scan-button')
     expect(html).toContain('Copy digest')
   })
+
+  it('persists in-progress feedback drafts across refreshes', () => {
+    const html = renderDashboardHtml()
+
+    expect(html).toContain('japan-tcg-arb-feedback-drafts')
+    expect(html).toContain('saveFeedbackDraft')
+    expect(html).toContain('shouldPreserveDetailOnRefresh')
+  })
 })

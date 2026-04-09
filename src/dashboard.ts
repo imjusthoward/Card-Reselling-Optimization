@@ -355,18 +355,20 @@ const DASHBOARD_SCRIPT = String.raw`
 const REFRESH_INTERVAL_MS = 10000;
 const REQUEST_TIMEOUT_MS = 15000;
 
+const ACCESS_KEY_STORAGE = 'japan-tcg-arb-access-key';
+const FEEDBACK_DRAFT_STORAGE = 'japan-tcg-arb-feedback-drafts';
+
 const state = {
   latest: null,
   feedback: [],
   items: [],
   selectedId: null,
+  feedbackDrafts: readFeedbackDrafts(),
   loading: true,
   scanning: false,
   error: null,
   lastSyncedAt: null
 };
-
-const ACCESS_KEY_STORAGE = 'japan-tcg-arb-access-key';
 
 const nodes = {
   status: document.getElementById('status-line'),
@@ -399,6 +401,92 @@ function writeAccessKey(value) {
 
 function hasAccessKey() {
   return readAccessKey().length > 0
+}
+
+function readFeedbackDrafts() {
+  try {
+    var raw = localStorage.getItem(FEEDBACK_DRAFT_STORAGE);
+    if (!raw) {
+      return {};
+    }
+
+    var parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      return {};
+    }
+
+    return parsed;
+  } catch (_error) {
+    return {};
+  }
+}
+
+function persistFeedbackDrafts() {
+  try {
+    localStorage.setItem(FEEDBACK_DRAFT_STORAGE, JSON.stringify(state.feedbackDrafts));
+  } catch (_error) {
+    // Ignore storage failures; the live queue should keep working.
+  }
+}
+
+function getFeedbackDraft(listingId) {
+  return listingId ? state.feedbackDrafts[listingId] || null : null;
+}
+
+function saveFeedbackDraft(listingId, draft) {
+  if (!listingId) {
+    return;
+  }
+
+  state.feedbackDrafts[listingId] = draft;
+  persistFeedbackDrafts();
+}
+
+function clearFeedbackDraft(listingId) {
+  if (!listingId || !state.feedbackDrafts[listingId]) {
+    return;
+  }
+
+  delete state.feedbackDrafts[listingId];
+  persistFeedbackDrafts();
+}
+
+function readCurrentForm() {
+  return nodes.detail.querySelector('#feedback-form');
+}
+
+function getCurrentFormListingId(form) {
+  return form ? String(form.querySelector('[name="listingId"]')?.value || '').trim() : '';
+}
+
+function saveCurrentFeedbackDraft() {
+  var form = readCurrentForm();
+  if (!form) {
+    return;
+  }
+
+  var listingId = getCurrentFormListingId(form);
+  if (!listingId) {
+    return;
+  }
+
+  saveFeedbackDraft(listingId, {
+    authenticity: form.querySelector('input[name="authenticity"]:checked')?.value || 'uncertain',
+    condition: form.querySelector('input[name="condition"]:checked')?.value || 'uncertain',
+    recommendedAction: form.querySelector('input[name="recommendedAction"]:checked')?.value || 'watch',
+    confidence: String(form.querySelector('[name="confidence"]').value || '0.50'),
+    notes: String(form.querySelector('[name="notes"]').value || '')
+  });
+}
+
+function shouldPreserveDetailOnRefresh() {
+  var form = readCurrentForm();
+  if (!form) {
+    return false;
+  }
+
+  var listingId = getCurrentFormListingId(form);
+  return !!listingId && !!getFeedbackDraft(listingId);
 }
 
 function escapeHtml(value) {
@@ -550,6 +638,25 @@ function fillForm(item) {
     return;
   }
 
+  var draft = item ? getFeedbackDraft(item.listingId) : null;
+  var authenticity = draft && draft.authenticity ? draft.authenticity : 'uncertain';
+  var condition = draft && draft.condition
+    ? draft.condition
+    : item && item.riskGroup === 'sealed'
+      ? 'clean'
+      : 'uncertain';
+  var action = draft && draft.recommendedAction
+    ? draft.recommendedAction
+    : item
+      ? (item.kind === 'buy' ? 'buy' : 'watch')
+      : 'watch';
+  var confidenceValue = draft && draft.confidence
+    ? String(draft.confidence)
+    : item
+      ? String(Math.max(0, Math.min(1, Number(item.confidence || 0.5))))
+      : '0.50';
+  var notesValue = draft && draft.notes ? draft.notes : '';
+
   form.querySelector('[name="listingId"]').value = item ? item.listingId : '';
   form.querySelector('[name="marketplace"]').value = item ? item.marketplace : '';
   form.querySelector('[name="riskGroup"]').value = item ? item.riskGroup : '';
@@ -557,15 +664,11 @@ function fillForm(item) {
   form.querySelector('[name="sourceListingId"]').value = item && item.sourceListingId ? item.sourceListingId : '';
   form.querySelector('[name="sourceQuery"]').value = item && item.sourceQuery ? item.sourceQuery : '';
   form.querySelector('[name="matchedWatchlistTitle"]').value = item && item.matchedWatchlistTitle ? item.matchedWatchlistTitle : '';
-  form.querySelector('[name="recommendedAction"]').value = item ? (item.traderAction || 'watch') : 'watch';
+  form.querySelector('[name="recommendedAction"]').value = action;
   form.querySelector('[name="reviewer"]').value = 'alex';
   form.querySelector('[name="reviewedAt"]').value = new Date().toISOString();
-  form.querySelector('[name="confidence"]').value = item ? String(Math.max(0, Math.min(1, Number(item.confidence || 0.5)))) : '0.50';
-  form.querySelector('[name="notes"]').value = '';
-
-  var authenticity = item && item.kind === 'buy' ? 'uncertain' : 'uncertain';
-  var condition = item && item.riskGroup === 'sealed' ? 'clean' : 'uncertain';
-  var action = item ? (item.kind === 'buy' ? 'buy' : 'watch') : 'watch';
+  form.querySelector('[name="confidence"]').value = confidenceValue;
+  form.querySelector('[name="notes"]').value = notesValue;
 
   var auth = form.querySelector('input[name="authenticity"][value="' + authenticity + '"]');
   var cond = form.querySelector('input[name="condition"][value="' + condition + '"]');
@@ -795,6 +898,7 @@ function renderStatus() {
 }
 
 function selectItem(listingId) {
+  saveCurrentFeedbackDraft();
   state.selectedId = listingId;
   renderDetail();
   renderQueue();
@@ -847,6 +951,13 @@ async function refresh(options) {
       ? state.selectedId
       : (state.items[0] ? state.items[0].listingId : null);
 
+    if (!manual && shouldPreserveDetailOnRefresh()) {
+      renderQueue();
+      renderFeedbackList();
+      renderStatus();
+      return;
+    }
+
     renderAll();
     renderStatus();
   } catch (error) {
@@ -888,6 +999,7 @@ async function submitFeedback(event) {
       method: 'POST',
       body: JSON.stringify(payload)
     });
+    clearFeedbackDraft(payload.listingId);
     status.textContent = 'Saved.';
     await refresh({ manual: true });
   } catch (error) {
@@ -961,6 +1073,7 @@ nodes.detail.addEventListener('change', function (event) {
   if (!form) {
     return;
   }
+  saveCurrentFeedbackDraft();
   setChoiceHighlights(form);
   updateConfidenceValue(form);
 });
@@ -970,6 +1083,7 @@ nodes.detail.addEventListener('input', function (event) {
   if (!form) {
     return;
   }
+  saveCurrentFeedbackDraft();
   updateConfidenceValue(form);
 });
 
