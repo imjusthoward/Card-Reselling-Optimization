@@ -11,6 +11,11 @@ const DASHBOARD_CSS = String.raw`
   --buy: #175d43;
   --review: #8b6516;
   --pass: #6a7170;
+  --buy-strong: rgba(23, 93, 67, 0.2);
+  --buy-soft: rgba(23, 93, 67, 0.12);
+  --review-strong: rgba(139, 101, 22, 0.18);
+  --review-soft: rgba(139, 101, 22, 0.1);
+  --pass-soft: rgba(106, 113, 112, 0.1);
 }
 
 * { box-sizing: border-box; }
@@ -128,6 +133,7 @@ h2 {
 }
 
 #queue-list,
+#health-list,
 #detail-view,
 #feedback-list {
   min-height: 0;
@@ -147,12 +153,34 @@ h2 {
 
 .item {
   cursor: pointer;
-  transition: background 160ms ease;
+  position: relative;
+  border-left: 5px solid transparent;
+  transition: background 160ms ease, border-color 160ms ease, transform 160ms ease;
 }
 
 .item:hover,
 .item.selected {
   background: rgba(28, 90, 73, 0.08);
+}
+
+.item.signal-strong {
+  background: linear-gradient(90deg, var(--buy-strong), rgba(255, 255, 255, 0.7) 68%);
+  border-left-color: var(--buy);
+}
+
+.item.signal-warm {
+  background: linear-gradient(90deg, var(--buy-soft), rgba(255, 255, 255, 0.72) 70%);
+  border-left-color: rgba(23, 93, 67, 0.65);
+}
+
+.item.signal-borderline {
+  background: linear-gradient(90deg, var(--review-strong), rgba(255, 255, 255, 0.74) 70%);
+  border-left-color: var(--review);
+}
+
+.item.signal-muted {
+  background: linear-gradient(90deg, var(--pass-soft), rgba(255, 255, 255, 0.76) 70%);
+  border-left-color: var(--pass);
 }
 
 .title {
@@ -330,6 +358,33 @@ textarea { min-height: 96px; resize: vertical; }
   white-space: pre-wrap;
 }
 
+.timestamp {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.01em;
+}
+
+#health-list {
+  display: grid;
+  gap: 10px;
+  padding: 14px 20px 18px;
+}
+
+.health-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  align-items: flex-start;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.56);
+}
+
+.health-row strong {
+  display: block;
+  margin-bottom: 4px;
+}
+
 .empty {
   color: var(--muted);
 }
@@ -379,6 +434,7 @@ const nodes = {
   refreshButton: document.getElementById('refresh-button'),
   copyButton: document.getElementById('copy-button'),
   queue: document.getElementById('queue-list'),
+  health: document.getElementById('health-list'),
   detail: document.getElementById('detail-view'),
   feedback: document.getElementById('feedback-list')
 };
@@ -535,6 +591,130 @@ function timeAgo(value) {
   return Math.floor(hours / 24) + 'd ago';
 }
 
+function formatClock(value) {
+  if (!value) {
+    return 'unknown';
+  }
+
+  var date = new Date(value);
+  if (!Number.isFinite(date.getTime())) {
+    return 'unknown';
+  }
+
+  return new Intl.DateTimeFormat('en-GB', {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false
+  }).format(date);
+}
+
+function getSignalClass(item) {
+  if (!item) {
+    return 'signal-muted';
+  }
+
+  if (item.kind === 'buy') {
+    if (Number(item.priorityScore || 0) >= 5000) {
+      return 'signal-strong';
+    }
+
+    if (Number(item.priorityScore || 0) >= 1500) {
+      return 'signal-warm';
+    }
+
+    return 'signal-borderline';
+  }
+
+  if (Number(item.priorityScore || 0) >= 1500) {
+    return 'signal-borderline';
+  }
+
+  return 'signal-muted';
+}
+
+function summarizeRiskGroups(opportunities) {
+  var summary = {
+    raw: 0,
+    slab: 0,
+    sealed: 0
+  };
+
+  opportunities.forEach(function (entry) {
+    if (entry && Object.prototype.hasOwnProperty.call(summary, entry.riskGroup)) {
+      summary[entry.riskGroup] += 1;
+    }
+  });
+
+  return summary;
+}
+
+function renderSourceHealth() {
+  if (!nodes.health) {
+    return;
+  }
+
+  var latest = state.latest;
+  if (!latest) {
+    nodes.health.innerHTML = '<div class="empty"><strong>Scan health is waiting on the first live run.</strong><div class="subtle">Run a scan to see marketplace coverage, graded mix, and source status at a glance.</div></div>';
+    return;
+  }
+
+  var sourceSummaries = Array.isArray(latest.sourceSummaries) ? latest.sourceSummaries : [];
+  var opportunities = Array.isArray(latest.opportunities) ? latest.opportunities : [];
+  var riskGroups = summarizeRiskGroups(opportunities);
+  var slabMatches = opportunities.filter(function (entry) {
+    return entry && entry.riskGroup === 'slab';
+  }).length;
+  var priceSheetMatches = opportunities.filter(function (entry) {
+    return !!(entry && entry.priceSheetMatch);
+  }).length;
+  var missingShrinkWrap = opportunities.filter(function (entry) {
+    return entry && entry.riskGroup === 'sealed' && entry.shrinkWrapState === 'missing';
+  }).length;
+  var latestStamp = latest.generatedAt ? formatClock(latest.generatedAt) : 'unknown';
+
+  var rows = [
+    '<div class="health-row">',
+    '<div>',
+    '<div class="meta">',
+    '<span class="pill">scan ' + escapeHtml(latest.scanId ? latest.scanId.slice(0, 8) : 'n/a') + '</span>',
+    '<span class="pill timestamp">at ' + escapeHtml(latestStamp) + '</span>',
+    '<span class="pill">raw ' + String(riskGroups.raw) + '</span>',
+    '<span class="pill">slab ' + String(riskGroups.slab) + '</span>',
+    '<span class="pill">sealed ' + String(riskGroups.sealed) + '</span>',
+    '</div>',
+    '<strong>Coverage snapshot</strong>',
+    '<div class="subtle">slab/graded matches ' + String(slabMatches) + ' • watchlist price-sheet flags ' + String(priceSheetMatches) + ' • shrinkless sealed ' + String(missingShrinkWrap) + '</div>',
+    '</div>',
+    '</div>'
+  ];
+
+  sourceSummaries.forEach(function (summary) {
+    var note = summary.note || (summary.status === 'unsupported'
+      ? 'Public HTML did not expose listing cards.'
+      : summary.status === 'empty'
+        ? 'No relevant results.'
+        : '');
+    rows.push([
+      '<div class="health-row">',
+      '<div>',
+      '<div class="meta">',
+      '<span class="pill">' + escapeHtml(summary.marketplace) + '</span>',
+      '<span class="pill">' + escapeHtml(summary.status) + '</span>',
+      '<span class="pill">' + String(summary.resultCount) + ' results</span>',
+      summary.durationMs != null ? '<span class="pill timestamp">' + String(summary.durationMs) + 'ms</span>' : '',
+      '</div>',
+      '<strong>' + escapeHtml(summary.query || 'no query') + '</strong>',
+      '<div class="subtle">' + escapeHtml(note || 'Source scan completed.') + '</div>',
+      '</div>',
+      '</div>'
+    ].join(''));
+  });
+
+  nodes.health.innerHTML = rows.join('');
+}
+
 function fetchJson(url, options) {
   var controller = new AbortController();
   var timer = setTimeout(function () {
@@ -596,6 +776,8 @@ function buildItems(latest) {
       sourceListingId: packet.sourceListingId || (listing && listing.sourceListingId) || '',
       sourceQuery: packet.sourceQuery || (listing && listing.sourceQuery) || '',
       matchedWatchlistTitle: packet.matchedWatchlistTitle || (listing && listing.matchedWatchlistTitle) || '',
+      scrapedAt: packet.scrapedAt || (listing && listing.scrapedAt) || '',
+      scanGeneratedAt: latest.generatedAt || '',
       imageUrl: opportunity && opportunity.imageUrls && opportunity.imageUrls[0] ? opportunity.imageUrls[0] : '',
       notes: opportunity && Array.isArray(opportunity.notes) ? opportunity.notes : []
     };
@@ -696,13 +878,16 @@ function renderQueue() {
 
   nodes.queue.innerHTML = state.items.map(function (item, index) {
     var selected = item.listingId === state.selectedId ? ' selected' : '';
+    var signalClass = getSignalClass(item);
     var reasons = Array.isArray(item.reasons) ? item.reasons.slice(0, 2).join(' • ') : '';
+    var listedAt = item.scrapedAt || item.scanGeneratedAt || (state.latest && state.latest.generatedAt) || '';
     return [
-      '<button class="item' + selected + '" type="button" data-listing-id="' + escapeHtml(item.listingId) + '">',
+      '<button class="item ' + signalClass + selected + '" type="button" data-listing-id="' + escapeHtml(item.listingId) + '">',
       '<div class="meta">',
       '<span class="pill ' + (item.kind === 'buy' ? 'buy' : 'review') + '">' + item.kind + '</span>',
       '<span class="pill">' + escapeHtml(item.marketplace) + '</span>',
       '<span class="pill">#' + String(index + 1).padStart(2, '0') + '</span>',
+      '<span class="pill timestamp">scan ' + escapeHtml(listedAt ? formatClock(listedAt) : 'n/a') + '</span>',
       '</div>',
       '<h3 class="title">' + escapeHtml(item.title) + '</h3>',
       '<div class="line">' + escapeHtml(item.matchedWatchlistTitle || 'unmatched') + ' • ' + escapeHtml(item.sourceQuery || 'no query') + '</div>',
@@ -725,12 +910,14 @@ function renderFeedbackList() {
   }
 
   nodes.feedback.innerHTML = state.feedback.slice(0, 5).map(function (entry) {
+    var reviewedAt = entry.reviewedAt ? formatClock(entry.reviewedAt) : 'n/a';
     return [
       '<div class="card">',
       '<div class="meta">',
       '<span class="pill">' + escapeHtml(entry.authenticity || 'uncertain') + '</span>',
       '<span class="pill">' + escapeHtml(entry.condition || 'uncertain') + '</span>',
       '<span class="pill">' + escapeHtml(entry.recommendedAction || 'watch') + '</span>',
+      '<span class="pill timestamp">' + escapeHtml(reviewedAt) + '</span>',
       '</div>',
       '<div class="title" style="font-size: 0.95rem; margin-top: 8px;">' + escapeHtml(entry.listingId || 'unknown listing') + '</div>',
       '<div class="subtle">' + escapeHtml(entry.notes || entry.followUp || 'No notes provided.') + '</div>',
@@ -749,6 +936,7 @@ function renderDetail() {
 
   var reasons = Array.isArray(item.reasons) ? item.reasons : [];
   var notes = Array.isArray(item.notes) ? item.notes : [];
+  var listedAt = item.scrapedAt || item.scanGeneratedAt || (state.latest && state.latest.generatedAt) || '';
   var image = item.imageUrl
     ? '<img src="' + escapeHtml(item.imageUrl) + '" alt="' + escapeHtml(item.title) + '" loading="lazy" referrerpolicy="no-referrer" />'
     : '<div class="placeholder"><div><strong>No image captured</strong><div class="subtle">This source did not expose a reliable preview image.</div></div></div>';
@@ -778,11 +966,13 @@ function renderDetail() {
     '<div class="stack">',
     '<div class="row">',
     '<span class="pill">scan ' + escapeHtml(state.latest && state.latest.scanId ? state.latest.scanId.slice(0, 8) : 'n/a') + '</span>',
+    '<span class="pill timestamp">found ' + escapeHtml(listedAt ? formatClock(listedAt) : 'n/a') + '</span>',
     '<span class="pill">updated ' + escapeHtml(state.lastSyncedAt ? timeAgo(state.lastSyncedAt) : 'n/a') + '</span>',
     '</div>',
     '<div class="subtle">Source query: ' + escapeHtml(item.sourceQuery || 'n/a') + '</div>',
     '<div class="subtle">Matched watchlist: ' + escapeHtml(item.matchedWatchlistTitle || 'n/a') + '</div>',
     '<div class="subtle">Source listing id: ' + escapeHtml(item.sourceListingId || 'n/a') + '</div>',
+    '<div class="subtle">Live timestamp: ' + escapeHtml(listedAt ? timeAgo(listedAt) : 'n/a') + '</div>',
     item.sourceUrl ? '<a class="button ghost" href="' + escapeHtml(item.sourceUrl) + '" target="_blank" rel="noreferrer">Open source</a>' : '',
     reasons.length ? '<div><div class="subtle" style="margin-bottom: 6px;">Reasons</div><div class="row">' + reasons.map(function (reason) { return '<span class="pill">' + escapeHtml(reason) + '</span>'; }).join('') + '</div></div>' : '',
     notes.length ? '<div><div class="subtle" style="margin-bottom: 6px;">Watchlist notes</div><div class="row">' + notes.map(function (note) { return '<span class="pill">' + escapeHtml(note) + '</span>'; }).join('') + '</div></div>' : '',
@@ -861,6 +1051,7 @@ function renderDetail() {
 
 function renderAll() {
   renderQueue();
+  renderSourceHealth();
   renderDetail();
   renderFeedbackList();
 }
@@ -916,6 +1107,7 @@ async function refresh(options) {
     state.feedback = [];
     state.latest = null;
     renderQueue();
+    renderSourceHealth();
     renderDetail();
     renderFeedbackList();
     renderStatus();
@@ -956,6 +1148,7 @@ async function refresh(options) {
 
     if (shouldPreserveDetailOnRefresh()) {
       renderQueue();
+      renderSourceHealth();
       renderFeedbackList();
       renderStatus();
       return;
@@ -968,6 +1161,7 @@ async function refresh(options) {
     state.loading = false;
     renderStatus();
     renderQueue();
+    renderSourceHealth();
     renderDetail();
   }
 }
@@ -1165,6 +1359,8 @@ export function renderDashboardHtml(): string {
         <section>
           <h2>Live queue</h2>
           <div id="queue-list"></div>
+          <h2>Scan health</h2>
+          <div id="health-list"></div>
         </section>
         <section>
           <h2>Selected listing</h2>

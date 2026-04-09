@@ -10,6 +10,7 @@ describe('dashboard html', () => {
     expect(html).toContain('feedback-form')
     expect(html).toContain('scan-button')
     expect(html).toContain('Copy digest')
+    expect(html).toContain('Scan health')
   })
 
   it('persists in-progress feedback drafts across refreshes', () => {
@@ -19,5 +20,9 @@ describe('dashboard html', () => {
     expect(html).toContain('feedbackFormDirty')
     expect(html).toContain('saveFeedbackDraft')
     expect(html).toContain('shouldPreserveDetailOnRefresh')
+    expect(html).toContain('sourceSummaries')
+    expect(html).toContain('scrapedAt')
+    expect(html).toContain('signal-strong')
+    expect(html).toContain('reviewedAt')
   })
 })

@@ -632,10 +632,29 @@ function buildAlexDigest(
   report: ReturnType<typeof buildMvpReport>,
   notifications: ReturnType<typeof buildNotificationPayload>[],
   reviews: ReturnType<typeof buildTraderReviewPacket>[],
+  sourceSummaries: LiveSourceSummary[],
+  opportunities: OpportunityListing[],
   unavailableSources: string[]
 ): string {
   const topNotifications = notifications.slice(0, 5).map(formatNotificationPayload)
   const topReviews = reviews.slice(0, 5).map(formatTraderReviewPacket)
+  const riskGroupCounts = opportunities.reduce(
+    (counts, listing) => {
+      counts[listing.riskGroup] += 1
+      return counts
+    },
+    {
+      raw: 0,
+      slab: 0,
+      sealed: 0
+    }
+  )
+  const compactSourceSummary = sourceSummaries
+    .map(summary => `${summary.marketplace}:${summary.status}${summary.resultCount > 0 ? `(${summary.resultCount})` : ''}`)
+    .join(' | ')
+  const unavailableSummary = sourceSummaries
+    .filter(summary => summary.status !== 'ok')
+    .map(summary => `${summary.marketplace}:${summary.note || summary.status}`)
 
   return [
     'ALEX REVIEW PACK',
@@ -643,6 +662,9 @@ function buildAlexDigest(
     `generatedAt=${generatedAt}`,
     `pipeline=${report.pipeline.total} | notify=${report.pipeline.notifyCount} | review=${report.pipeline.reviewCount} | pass=${report.pipeline.passCount}`,
     `precision=${report.matched.precision == null ? 'n/a' : `${(report.matched.precision * 100).toFixed(1)}%`} | falsePositiveRate=${report.matched.falsePositiveRate == null ? 'n/a' : `${(report.matched.falsePositiveRate * 100).toFixed(1)}%`}`,
+    `coverage=raw ${riskGroupCounts.raw} | slab ${riskGroupCounts.slab} | sealed ${riskGroupCounts.sealed}`,
+    compactSourceSummary.length > 0 ? `sources=${compactSourceSummary}` : 'sources=none',
+    unavailableSummary.length > 0 ? `source-notes=${unavailableSummary.join(' | ')}` : 'source-notes=none',
     '',
     'Top buy candidates:',
     ...(topNotifications.length > 0 ? topNotifications : ['- none']),
@@ -1095,6 +1117,8 @@ export async function runLiveScan(
     report,
     notifications,
     reviews,
+    sourceSummaries,
+    opportunities,
     unavailableSources
   )
   const scanArtifactPath = `scans/${generatedAt.slice(0, 10)}/${scanId}.json`

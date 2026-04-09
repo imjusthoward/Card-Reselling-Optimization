@@ -12,6 +12,19 @@ import {
 } from '../src/live.js'
 import type { ArtifactStore } from '../src/artifacts.js'
 import type { LiveScanResult, LiveState } from '../src/live.js'
+type TempWatchlistEntry = {
+  id: string
+  title: string
+  marketplaces: LiveMarketplace[]
+  searchTerms: string[]
+  riskGroup: 'raw' | 'slab' | 'sealed'
+  cleanExitJpy: number
+  damagedExitJpy: number
+  exitCostsJpy: number
+  salvageJpy: number
+  liquidityScore: number
+  active: boolean
+}
 
 class MemoryArtifactStore implements ArtifactStore {
   private readonly files = new Map<string, unknown>()
@@ -80,14 +93,12 @@ function makeFetch(options: { yahooHtml?: string; snkrdunkHtml?: string } = {}):
   }) as typeof fetch
 }
 
-async function createTempWatchlist(): Promise<string> {
-  const dir = await mkdtemp(join(tmpdir(), 'arb-watchlist-'))
-  const watchlistPath = join(dir, 'watchlist.json')
-  const watchlist = [
+async function createTempWatchlist(
+  entries: TempWatchlistEntry[] = [
     {
       id: 'terastal-fes-ex-box',
       title: 'テラスタルフェスex ボックス',
-      marketplaces: ['yahoo_flea', 'snkrdunk'] as LiveMarketplace[],
+      marketplaces: ['yahoo_flea', 'snkrdunk'],
       searchTerms: ['テラスタルフェスex ボックス'],
       riskGroup: 'sealed',
       cleanExitJpy: 25000,
@@ -98,8 +109,10 @@ async function createTempWatchlist(): Promise<string> {
       active: true
     }
   ]
-
-  await writeFile(watchlistPath, `${JSON.stringify(watchlist, null, 2)}\n`, 'utf8')
+): Promise<string> {
+  const dir = await mkdtemp(join(tmpdir(), 'arb-watchlist-'))
+  const watchlistPath = join(dir, 'watchlist.json')
+  await writeFile(watchlistPath, `${JSON.stringify(entries, null, 2)}\n`, 'utf8')
   return watchlistPath
 }
 
@@ -173,6 +186,8 @@ describe('live scan', () => {
 
     expect(first.scrapedListings.length).toBeGreaterThanOrEqual(2)
     expect(first.notifications.length).toBeGreaterThanOrEqual(1)
+    expect(first.alexDigest).toContain('coverage=raw')
+    expect(first.alexDigest).toContain('sources=yahoo_flea:ok')
     expect(await artifactStore.readJson<LiveScanResult>('scans/latest.json')).not.toBeNull()
     const emptyState = await loadLiveState(artifactStore)
     expect(emptyState).toEqual({ entries: {} })
@@ -191,5 +206,47 @@ describe('live scan', () => {
 
     expect(secondSelection.freshNotifications).toHaveLength(0)
     expect(secondSelection.freshReviews).toHaveLength(0)
+  })
+
+  it('marks mercari as unsupported in the scan digest when the public HTML has no cards', async () => {
+    const watchlistPath = await createTempWatchlist([
+      {
+        id: 'mercari-terastal-fes-ex-box',
+        title: 'テラスタルフェスex ボックス',
+        marketplaces: ['mercari'],
+        searchTerms: ['テラスタルフェスex ボックス'],
+        riskGroup: 'sealed',
+        cleanExitJpy: 25000,
+        damagedExitJpy: 21000,
+        exitCostsJpy: 1000,
+        salvageJpy: 15000,
+        liquidityScore: 0.92,
+        active: true
+      }
+    ])
+    const artifactStore = new MemoryArtifactStore()
+    const fetchImpl = makeFetch()
+
+    const result = await runLiveScan({
+      watchlistPath,
+      labelsPath: 'data/sample-labels.json',
+      configPath: 'data/scoring-config.json',
+      watchlistLimit: 1,
+      queryStrategy: 'primary',
+      sourceFilter: ['mercari'],
+      limitPerQuery: 5,
+      searchConcurrency: 1,
+      fetchTimeoutMs: 2000,
+      maxNotifications: 5,
+      maxReviews: 5,
+      artifactStore,
+      fetchImpl,
+      notifyAlex: false
+    })
+
+    expect(result.sourceSummaries[0]?.status).toBe('unsupported')
+    expect(result.alexDigest).toContain('coverage=raw 0 | slab 0 | sealed 0')
+    expect(result.alexDigest).toContain('sources=mercari:unsupported')
+    expect(result.alexDigest).toContain('source-notes=mercari:')
   })
 })
