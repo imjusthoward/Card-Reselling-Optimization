@@ -1,0 +1,18 @@
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args:
+      [
+        "build",
+        "-t",
+        "asia-northeast1-docker.pkg.dev/$PROJECT_ID/arb-images/arb-copilot:$SHORT_SHA",
+        "-t",
+        "asia-northeast1-docker.pkg.dev/$PROJECT_ID/arb-images/arb-copilot:latest",
+        ".",
+      ]
+
+images:
+  - asia-northeast1-docker.pkg.dev/$PROJECT_ID/arb-images/arb-copilot:$SHORT_SHA
+  - asia-northeast1-docker.pkg.dev/$PROJECT_ID/arb-images/arb-copilot:latest
+
+options:
+  logging: CLOUD_LOGGING_ONLY

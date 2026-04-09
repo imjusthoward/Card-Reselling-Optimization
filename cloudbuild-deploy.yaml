@@ -1,0 +1,25 @@
+steps:
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+    entrypoint: gcloud
+    args:
+      [
+        "run",
+        "deploy",
+        "arb-api",
+        "--image=asia-northeast1-docker.pkg.dev/$PROJECT_ID/arb-images/arb-copilot:latest",
+        "--region=asia-northeast1",
+        "--platform=managed",
+        "--allow-unauthenticated",
+        "--service-account=arb-runtime@$PROJECT_ID.iam.gserviceaccount.com",
+        "--set-cloudsql-instances=$PROJECT_ID:asia-northeast1:arb-postgres",
+        "--set-env-vars=ARB_LISTINGS_PATH=data/sample-listings.json,ARB_LABELS_PATH=data/sample-labels.json,ARB_CONFIG_PATH=data/scoring-config.json,ARB_CHANNEL=dashboard,GCP_REGION=asia-northeast1",
+        "--set-secrets=ARB_API_KEY=arb-service-credentials:latest",
+        "--cpu=1",
+        "--memory=1Gi",
+        "--max-instances=2",
+        "--min-instances=0",
+        "--project=$PROJECT_ID",
+      ]
+
+options:
+  logging: CLOUD_LOGGING_ONLY

@@ -1,23 +1,18 @@
 #!/usr/bin/env node
-import { readFile } from 'node:fs/promises'
-import { existsSync } from 'node:fs'
-import { resolve } from 'node:path'
 import {
-  buildCalibration,
-  buildMvpReport,
-  buildNotificationPayload,
-  buildTraderReviewPacket,
-  classifyOpportunityStage,
   formatMvpReport,
   NOTIFICATION_CHANNELS,
   formatOpportunitySummary,
-  scoreBatch,
-  type CalibrationInput,
-  type OpportunityListing,
-  type ScoringConfig,
-  type NotificationChannel,
-  type TraderLabel
+  type NotificationChannel
 } from './index.js'
+import {
+  buildWorkflowOutputs,
+  loadWorkflow,
+  resolveWorkflowPath,
+  DEFAULT_CONFIG_PATH,
+  DEFAULT_LABELS_PATH,
+  DEFAULT_LISTINGS_PATH
+} from './workflow.js'
 
 interface CliOptions {
   listingsPath: string
@@ -94,33 +89,21 @@ function parseArgs(argv: string[]): CliOptions {
   return options
 }
 
-async function loadJson<T>(filePath: string): Promise<T> {
-  const absolutePath = resolve(process.cwd(), filePath)
-
-  if (!existsSync(absolutePath)) {
-    throw new Error(`Missing file: ${absolutePath}`)
-  }
-
-  const contents = await readFile(absolutePath, 'utf8')
-  return JSON.parse(contents) as T
-}
-
 async function main(): Promise<void> {
   const options = parseArgs(process.argv.slice(2))
-  const listings = await loadJson<OpportunityListing[]>(options.listingsPath)
-  const labels = options.labelsPath
-    ? await loadJson<TraderLabel[]>(options.labelsPath)
-    : []
-  const scoringConfig = options.configPath
-    ? await loadJson<Partial<ScoringConfig & CalibrationInput>>(
-        options.configPath
-      )
-    : {}
-
-  const calibration = buildCalibration(labels, scoringConfig)
-  const scores = scoreBatch(listings, calibration, scoringConfig)
-  const limitedScores =
-    options.limit == null ? scores : scores.slice(0, options.limit)
+  const workflow = await loadWorkflow({
+    listingsPath: resolveWorkflowPath(options.listingsPath, DEFAULT_LISTINGS_PATH),
+    labelsPath:
+      options.labelsPath == null
+        ? DEFAULT_LABELS_PATH
+        : resolveWorkflowPath(options.labelsPath, DEFAULT_LABELS_PATH),
+    configPath:
+      options.configPath == null
+        ? DEFAULT_CONFIG_PATH
+        : resolveWorkflowPath(options.configPath, DEFAULT_CONFIG_PATH),
+    limit: options.limit
+  })
+  const { limitedScores } = workflow
 
   if (options.output === 'json') {
     process.stdout.write(`${JSON.stringify(limitedScores, null, 2)}\n`)
@@ -128,24 +111,25 @@ async function main(): Promise<void> {
   }
 
   if (options.output === 'notify') {
-    const notificationPayloads = limitedScores
-      .filter(score => classifyOpportunityStage(score) === 'notify')
-      .map(score => buildNotificationPayload(score, options.channel))
+    const { notifications: notificationPayloads } = buildWorkflowOutputs(
+      limitedScores,
+      options.channel
+    )
     process.stdout.write(`${JSON.stringify(notificationPayloads, null, 2)}\n`)
     return
   }
 
   if (options.output === 'review') {
-    const reviewPackets = limitedScores
-      .filter(score => classifyOpportunityStage(score) !== 'pass')
-      .map(score => buildTraderReviewPacket(score))
+    const { reviews: reviewPackets } = buildWorkflowOutputs(
+      limitedScores,
+      options.channel
+    )
     process.stdout.write(`${JSON.stringify(reviewPackets, null, 2)}\n`)
     return
   }
 
   if (options.output === 'summary') {
-    const report = buildMvpReport(limitedScores, labels)
-    console.log(formatMvpReport(report))
+    console.log(formatMvpReport(workflow.report))
     return
   }
 

@@ -65,3 +65,20 @@ Do not buy heavier infrastructure until the manual loop proves:
 - the trader can label fast enough
 - the false-positive rate stays acceptable
 - the realized profit is still positive after fees and condition losses
+
+## Deployed Stack
+
+The current live GCP footprint is:
+
+- project: `japan-tcg-arb-260409`
+- service URL: `https://arb-api-453828005739.asia-northeast1.run.app`
+- Cloud Run job: `arb-scan`
+- Cloud SQL: `arb-postgres`
+- BigQuery dataset: `arb_analytics`
+- Artifact Registry: `arb-images`
+- evidence bucket: `gs://japan-tcg-arb-evidence-453828005739`
+- search app: `arb-trader-assist`
+- deploy topic: `arb-deploy`
+- deploy trigger: `arb-deploy-trigger`
+
+Billing export to BigQuery is still pending console enablement and is the only major procurement item not yet wired.

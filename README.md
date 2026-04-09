@@ -58,6 +58,24 @@ For the MVP in this repo, you do not need a large stack. The minimum is:
 
 Everything else can wait until the signal quality is proven.
 
+## Live GCP Footprint
+
+The current deployed stack is in `japan-tcg-arb-260409`:
+
+- Cloud Run service: `arb-api`
+- Cloud Run job: `arb-scan`
+- Cloud SQL instance: `arb-postgres`
+- BigQuery dataset: `arb_analytics`
+- Artifact Registry repo: `arb-images`
+- Evidence bucket: `gs://japan-tcg-arb-evidence-453828005739`
+- Vertex AI Search app: `arb-trader-assist`
+- Pub/Sub deploy topic: `arb-deploy`
+- Cloud Build deploy trigger: `arb-deploy-trigger`
+
+The deploy trigger uses [cloudbuild-deploy.yaml](./cloudbuild-deploy.yaml). The build config redeploys `arb-api` from the current Artifact Registry image and keeps the runtime config in sync with the local codebase.
+
+Billing export to BigQuery is the one remaining dashboard-only setup item and is still pending console enablement.
+
 ## Reference repos cloned locally
 
 The `vendor/reference/` folder contains shallow clones of the open-source repos that informed this build. They are kept out of the main package and ignored by git.

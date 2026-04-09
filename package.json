@@ -5,18 +5,22 @@
   "type": "module",
   "description": "Japan-first TCG arbitrage scoring engine with trader labeling and PSA-aware risk controls.",
   "license": "MIT",
-  "main": "dist/index.js",
+  "main": "dist/src/index.js",
   "bin": {
-    "japan-tcg-arb": "./dist/cli.js"
+    "japan-tcg-arb": "./dist/src/cli.js"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "test": "vitest run",
     "dev": "tsx src/cli.ts",
+    "dev:api": "tsx src/server.ts",
+    "dev:job": "tsx src/job.ts",
     "score": "tsx src/cli.ts",
     "notify": "tsx src/cli.ts --output notify",
     "review": "tsx src/cli.ts --output review",
-    "summary": "tsx src/cli.ts --output summary"
+    "summary": "tsx src/cli.ts --output summary",
+    "start:api": "node dist/src/server.js",
+    "start:job": "node dist/src/job.js"
   },
   "devDependencies": {
     "@types/node": "^22.15.3",
