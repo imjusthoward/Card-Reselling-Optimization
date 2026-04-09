@@ -35,7 +35,7 @@ npm run scan -- --output digest --watchlist-limit 1 --query-strategy primary --s
 npm run live:worker
 ```
 
-Open `http://localhost:8080/dashboard` for the live operator inbox.
+Open `http://localhost:8080/dashboard` for the live operator inbox. In Cloud Run, Alex can use the same `/dashboard` route and paste the shared API key once to unlock live data.
 
 ## Files to edit first
 

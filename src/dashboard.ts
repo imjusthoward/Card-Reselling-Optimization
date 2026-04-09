@@ -83,6 +83,15 @@ header button {
   transition: transform 160ms ease, background 160ms ease, border-color 160ms ease;
 }
 
+header input[type="password"] {
+  min-width: 180px;
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.72);
+  color: var(--ink);
+}
+
 header button:hover {
   transform: translateY(-1px);
   border-color: rgba(28, 90, 73, 0.3);
@@ -357,8 +366,12 @@ const state = {
   lastSyncedAt: null
 };
 
+const ACCESS_KEY_STORAGE = 'japan-tcg-arb-access-key';
+
 const nodes = {
   status: document.getElementById('status-line'),
+  accessKey: document.getElementById('access-key'),
+  unlockButton: document.getElementById('unlock-button'),
   scanButton: document.getElementById('scan-button'),
   refreshButton: document.getElementById('refresh-button'),
   copyButton: document.getElementById('copy-button'),
@@ -366,6 +379,27 @@ const nodes = {
   detail: document.getElementById('detail-view'),
   feedback: document.getElementById('feedback-list')
 };
+
+function readAccessKey() {
+  return localStorage.getItem(ACCESS_KEY_STORAGE)?.trim() || ''
+}
+
+function writeAccessKey(value) {
+  const normalized = value.trim()
+  if (normalized) {
+    localStorage.setItem(ACCESS_KEY_STORAGE, normalized)
+  } else {
+    localStorage.removeItem(ACCESS_KEY_STORAGE)
+  }
+
+  if (nodes.accessKey) {
+    nodes.accessKey.value = normalized
+  }
+}
+
+function hasAccessKey() {
+  return readAccessKey().length > 0
+}
 
 function escapeHtml(value) {
   return String(value == null ? '' : value)
@@ -417,10 +451,15 @@ function fetchJson(url, options) {
     controller.abort();
   }, REQUEST_TIMEOUT_MS);
 
-  return fetch(url, Object.assign({
-    signal: controller.signal,
-    headers: { 'content-type': 'application/json' }
-  }, options || {})).then(function (response) {
+  var requestOptions = Object.assign({}, options || {});
+  requestOptions.signal = controller.signal;
+  requestOptions.headers = Object.assign(
+    { 'content-type': 'application/json' },
+    (options && options.headers) || {},
+    hasAccessKey() ? { 'x-api-key': readAccessKey() } : {}
+  );
+
+  return fetch(url, requestOptions).then(function (response) {
     if (!response.ok) {
       throw new Error(response.status + ' ' + response.statusText);
     }
@@ -736,6 +775,10 @@ function updateConfidenceValue(form) {
 }
 
 function renderStatus() {
+  if (!hasAccessKey()) {
+    setStatus('Enter the access key to unlock live data.');
+    return;
+  }
   if (state.loading) {
     setStatus('Loading live queue...');
     return;
@@ -759,6 +802,18 @@ function selectItem(listingId) {
 
 async function refresh(options) {
   var manual = options && options.manual;
+  if (!hasAccessKey()) {
+    state.loading = false;
+    state.error = null;
+    state.items = [];
+    state.feedback = [];
+    state.latest = null;
+    renderQueue();
+    renderDetail();
+    renderFeedbackList();
+    renderStatus();
+    return;
+  }
   if (!manual) {
     state.loading = state.latest == null;
   }
@@ -841,6 +896,11 @@ async function submitFeedback(event) {
 }
 
 async function triggerScan() {
+  if (!hasAccessKey()) {
+    state.error = null;
+    renderStatus();
+    return;
+  }
   if (state.scanning) {
     return;
   }
@@ -875,6 +935,17 @@ function copyDigest() {
   }).catch(function () {
     nodes.status.textContent = 'Copy failed.';
   });
+}
+
+function unlockDashboard() {
+  if (!nodes.accessKey) {
+    return;
+  }
+
+  writeAccessKey(nodes.accessKey.value);
+  state.error = null;
+  nodes.accessKey.blur();
+  void refresh({ manual: true });
 }
 
 nodes.queue.addEventListener('click', function (event) {
@@ -917,6 +988,25 @@ nodes.refreshButton.addEventListener('click', function () {
 nodes.copyButton.addEventListener('click', function () {
   copyDigest();
 });
+if (nodes.unlockButton) {
+  nodes.unlockButton.addEventListener('click', function () {
+    unlockDashboard();
+  });
+}
+if (nodes.accessKey) {
+  nodes.accessKey.addEventListener('keydown', function (event) {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      unlockDashboard();
+    }
+  });
+}
+
+writeAccessKey(readAccessKey());
+renderStatus();
+if (hasAccessKey()) {
+  void refresh();
+}
 
 setInterval(function () {
   void refresh();
@@ -946,6 +1036,8 @@ export function renderDashboardHtml(): string {
         </div>
         <div id="status-line">Loading live queue...</div>
         <div>
+          <input id="access-key" type="password" placeholder="API key" autocomplete="off" />
+          <button id="unlock-button" type="button">Unlock</button>
           <button id="scan-button" type="button">Run scan now</button>
           <button id="refresh-button" type="button">Refresh</button>
           <button id="copy-button" type="button">Copy digest</button>

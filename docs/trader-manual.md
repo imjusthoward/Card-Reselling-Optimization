@@ -110,6 +110,8 @@ When you are using the dashboard, keep the first reply short:
 - Buy, watch, or pass?
 - What is the one-line evidence?
 
+To access the live dashboard in Cloud Run, open `/dashboard` and paste the shared API key once. After that, the page keeps the key locally for the session and uses it for live scans and feedback.
+
 ## Recommended review format
 
 Use a short note that explains the evidence, not the conclusion.

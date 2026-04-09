@@ -134,7 +134,11 @@ function hasValidApiKey(request: IncomingMessage, apiKey?: string): boolean {
   }
 
   const requestKey = readHeader(request.headers['x-api-key'])
-  return requestKey === apiKey
+  if (requestKey === apiKey) {
+    return true
+  }
+
+  return false
 }
 
 function sendJson(
@@ -213,8 +217,10 @@ async function handleRequest(
   const requestUrl = new URL(request.url ?? '/', 'http://localhost')
   const route = requestUrl.pathname
   const artifactStore = createArtifactStore(config.storageBucket)
+  const isPublicRoute =
+    request.method === 'GET' && (route === '/dashboard' || route === '/dashboard/')
 
-  if (!hasValidApiKey(request, config.apiKey)) {
+  if (!isPublicRoute && !hasValidApiKey(request, config.apiKey)) {
     sendJson(response, 401, {
       ok: false,
       error: 'Unauthorized'
@@ -255,6 +261,14 @@ async function handleRequest(
 
   if (request.method === 'GET' && (route === '/dashboard' || route === '/dashboard/')) {
     sendHtml(response, 200, renderDashboardHtml())
+    return
+  }
+
+  if (request.method === 'GET' && route === '/favicon.ico') {
+    response.writeHead(204, {
+      'cache-control': 'no-store'
+    })
+    response.end()
     return
   }
 
