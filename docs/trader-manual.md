@@ -100,6 +100,16 @@ If the item is a slab, include the cert status and whether the slab itself is da
 If the item is raw, include whether the back photo is strong enough to trust.
 If the item is sealed, call out shrink quality and box corners.
 
+## Fast review questions
+
+When you are using the dashboard, keep the first reply short:
+
+- Is the identification correct?
+- Authentic, fake, or uncertain?
+- Clean, damaged, or uncertain?
+- Buy, watch, or pass?
+- What is the one-line evidence?
+
 ## Recommended review format
 
 Use a short note that explains the evidence, not the conclusion.

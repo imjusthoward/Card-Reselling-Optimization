@@ -10,6 +10,7 @@ import {
   type Recommendation,
   type RiskGroup
 } from './index.js'
+import { renderDashboardHtml } from './dashboard.js'
 import { createArtifactStore } from './artifacts.js'
 import {
   listAlexFeedback,
@@ -156,6 +157,14 @@ function sendText(response: ServerResponse, statusCode: number, payload: string)
   response.end(`${payload}\n`)
 }
 
+function sendHtml(response: ServerResponse, statusCode: number, payload: string): void {
+  response.writeHead(statusCode, {
+    'content-type': 'text/html; charset=utf-8',
+    'cache-control': 'no-store'
+  })
+  response.end(payload)
+}
+
 async function readJsonBody<T>(request: IncomingMessage): Promise<T> {
   const chunks: Buffer[] = []
 
@@ -229,6 +238,7 @@ async function handleRequest(
       ok: true,
       service: 'arb-api',
       endpoints: [
+        '/dashboard',
         '/healthz',
         '/summary',
         '/notify',
@@ -243,6 +253,11 @@ async function handleRequest(
     return
   }
 
+  if (request.method === 'GET' && (route === '/dashboard' || route === '/dashboard/')) {
+    sendHtml(response, 200, renderDashboardHtml())
+    return
+  }
+
   if (request.method === 'GET' && route === '/summary') {
     const summary = await buildSummaryResponse(config)
     sendJson(response, 200, summary)
@@ -252,9 +267,10 @@ async function handleRequest(
   if (request.method === 'GET' && route === '/live/latest') {
     const latest = await loadLatestLiveScan(artifactStore)
     if (!latest) {
-      sendJson(response, 404, {
+      sendJson(response, 200, {
         ok: false,
-        error: 'No live scan found'
+        error: 'No live scan found',
+        latest: null
       })
       return
     }
@@ -269,9 +285,16 @@ async function handleRequest(
   if (request.method === 'GET' && route === '/live/inbox') {
     const latest = await loadLatestLiveScan(artifactStore)
     if (!latest) {
-      sendJson(response, 404, {
+      sendJson(response, 200, {
         ok: false,
-        error: 'No live scan found'
+        error: 'No live scan found',
+        generatedAt: null,
+        scanId: null,
+        notifications: [],
+        reviews: [],
+        sourceSummaries: [],
+        unavailableSources: [],
+        digest: ''
       })
       return
     }
@@ -292,7 +315,7 @@ async function handleRequest(
   if (request.method === 'GET' && route === '/live/alerts.txt') {
     const latest = await loadLatestLiveScan(artifactStore)
     if (!latest) {
-      sendText(response, 404, 'No live scan found')
+      sendText(response, 200, 'No live scan found')
       return
     }
 
@@ -424,6 +447,7 @@ async function handleRequest(
     ok: false,
     error: 'Not found',
     routes: [
+      '/dashboard',
       '/healthz',
       '/summary',
       '/notify',

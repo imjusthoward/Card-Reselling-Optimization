@@ -35,6 +35,8 @@ npm run scan -- --output digest --watchlist-limit 1 --query-strategy primary --s
 npm run live:worker
 ```
 
+Open `http://localhost:8080/dashboard` for the live operator inbox.
+
 ## Files to edit first
 
 - `data/sample-listings.json` for live opportunities
@@ -52,6 +54,7 @@ npm run live:worker
 5. Run `npm run summary` to see pipeline health, label coverage, and what infrastructure is actually needed now.
 6. Use `npm run scan` or `npm run live:worker` for the low-latency alert loop.
 7. Send Alex feedback back through `POST /live/feedback` or the live worker webhook so the model keeps learning.
+8. Use `GET /dashboard` for the live queue, detail pane, and fast review form.
 
 ## Infrastructure to procure now
 
