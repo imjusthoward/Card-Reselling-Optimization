@@ -1,0 +1,218 @@
+[
+  {
+    "id": "terastal-fes-ex-box",
+    "title": "テラスタルフェスex ボックス",
+    "marketplaces": ["mercari", "yahoo_flea", "snkrdunk"],
+    "searchTerms": [
+      "テラスタルフェスex ボックス",
+      "ポケモンカードゲーム スカーレット&バイオレット ハイクラスパック テラスタルフェスex ボックス",
+      "テラスタルフェスex"
+    ],
+    "riskGroup": "sealed",
+    "cleanExitJpy": 22999,
+    "damagedExitJpy": 19999,
+    "exitCostsJpy": 1200,
+    "salvageJpy": 15000,
+    "liquidityScore": 0.92,
+    "notes": ["high-volume sealed reference", "current SNKRDUNK market anchor"],
+    "active": true
+  },
+  {
+    "id": "mega-dream-ex-box",
+    "title": "MEGAドリームex ボックス",
+    "marketplaces": ["mercari", "yahoo_flea", "snkrdunk"],
+    "searchTerms": [
+      "MEGAドリームex ボックス",
+      "ポケモンカードゲームMEGA ハイクラスパック MEGAドリームex ボックス",
+      "メガドリームex ボックス"
+    ],
+    "riskGroup": "sealed",
+    "cleanExitJpy": 14800,
+    "damagedExitJpy": 12800,
+    "exitCostsJpy": 1100,
+    "salvageJpy": 10000,
+    "liquidityScore": 0.9,
+    "notes": ["high-demand sealed box"],
+    "active": true
+  },
+  {
+    "id": "inferno-x-box",
+    "title": "インフェルノX ボックス",
+    "marketplaces": ["mercari", "yahoo_flea", "snkrdunk"],
+    "searchTerms": [
+      "インフェルノX ボックス",
+      "ポケモンカードゲームMEGA 拡張パック インフェルノX ボックス",
+      "インフェルノx box"
+    ],
+    "riskGroup": "sealed",
+    "cleanExitJpy": 28000,
+    "damagedExitJpy": 24000,
+    "exitCostsJpy": 1200,
+    "salvageJpy": 18000,
+    "liquidityScore": 0.88,
+    "notes": ["newer sealed product"],
+    "active": true
+  },
+  {
+    "id": "pokemon-151-box",
+    "title": "ポケモンカード151 ボックス",
+    "marketplaces": ["mercari", "yahoo_flea", "snkrdunk"],
+    "searchTerms": [
+      "ポケモンカード151 ボックス",
+      "ポケモンカードゲーム スカーレット&バイオレット 強化拡張パック ポケモンカード151 ボックス",
+      "151 box"
+    ],
+    "riskGroup": "sealed",
+    "cleanExitJpy": 69000,
+    "damagedExitJpy": 62000,
+    "exitCostsJpy": 1800,
+    "salvageJpy": 45000,
+    "liquidityScore": 0.96,
+    "notes": ["reference box with strong resale demand"],
+    "active": true
+  },
+  {
+    "id": "battle-partners-box",
+    "title": "バトルパートナーズ ボックス",
+    "marketplaces": ["mercari", "yahoo_flea", "snkrdunk"],
+    "searchTerms": [
+      "バトルパートナーズ ボックス",
+      "ポケモンカードゲーム スカーレット&バイオレット 拡張パック バトルパートナーズ ボックス",
+      "battle partners box"
+    ],
+    "riskGroup": "sealed",
+    "cleanExitJpy": 10400,
+    "damagedExitJpy": 9200,
+    "exitCostsJpy": 1000,
+    "salvageJpy": 7000,
+    "liquidityScore": 0.84,
+    "notes": ["broad retail demand"],
+    "active": true
+  },
+  {
+    "id": "fukuoka-pikachu",
+    "title": "フクオカのピカチュウ",
+    "marketplaces": ["mercari", "yahoo_flea", "snkrdunk"],
+    "searchTerms": [
+      "フクオカのピカチュウ",
+      "ポケモンセンターフクオカ ピカチュウ",
+      "Fukuoka Pikachu"
+    ],
+    "riskGroup": "raw",
+    "cleanExitJpy": 22150,
+    "damagedExitJpy": 18000,
+    "exitCostsJpy": 900,
+    "salvageJpy": 6000,
+    "liquidityScore": 0.8,
+    "notes": ["promo single with strong regional demand"],
+    "active": true
+  },
+  {
+    "id": "hiroshima-pikachu",
+    "title": "ヒロシマのピカチュウ",
+    "marketplaces": ["mercari", "yahoo_flea", "snkrdunk"],
+    "searchTerms": [
+      "ヒロシマのピカチュウ",
+      "ポケモンセンターヒロシマ ピカチュウ",
+      "Hiroshima Pikachu"
+    ],
+    "riskGroup": "raw",
+    "cleanExitJpy": 16999,
+    "damagedExitJpy": 14000,
+    "exitCostsJpy": 900,
+    "salvageJpy": 5000,
+    "liquidityScore": 0.78,
+    "notes": ["promo single"],
+    "active": true
+  },
+  {
+    "id": "tohoku-pikachu",
+    "title": "トウホクのピカチュウ",
+    "marketplaces": ["mercari", "yahoo_flea", "snkrdunk"],
+    "searchTerms": [
+      "トウホクのピカチュウ",
+      "ポケモンセンタートウホク ピカチュウ",
+      "Tohoku Pikachu"
+    ],
+    "riskGroup": "raw",
+    "cleanExitJpy": 11000,
+    "damagedExitJpy": 9200,
+    "exitCostsJpy": 800,
+    "salvageJpy": 4000,
+    "liquidityScore": 0.76,
+    "notes": ["promo single"],
+    "active": true
+  },
+  {
+    "id": "pikachu-ar-173-165",
+    "title": "ピカチュウ AR 173/165",
+    "marketplaces": ["mercari", "yahoo_flea", "snkrdunk"],
+    "searchTerms": [
+      "ピカチュウ AR 173/165",
+      "ピカチュウ ar 173 165",
+      "ポケモンカード151 ピカチュウ AR"
+    ],
+    "riskGroup": "raw",
+    "cleanExitJpy": 2400,
+    "damagedExitJpy": 1800,
+    "exitCostsJpy": 700,
+    "salvageJpy": 500,
+    "liquidityScore": 0.94,
+    "notes": ["liquid raw single"],
+    "active": true
+  },
+  {
+    "id": "mew-ex-sar-205-165",
+    "title": "ミュウex SAR 205/165",
+    "marketplaces": ["mercari", "yahoo_flea", "snkrdunk"],
+    "searchTerms": [
+      "ミュウex SAR 205/165",
+      "ミュウ ex sar 205 165",
+      "ポケモンカード151 ミュウex SAR"
+    ],
+    "riskGroup": "raw",
+    "cleanExitJpy": 29999,
+    "damagedExitJpy": 25000,
+    "exitCostsJpy": 1200,
+    "salvageJpy": 3000,
+    "liquidityScore": 0.9,
+    "notes": ["high-grade chase card"],
+    "active": true
+  },
+  {
+    "id": "charizard-ex-sar-201-165",
+    "title": "リザードンex SAR 201/165",
+    "marketplaces": ["mercari", "yahoo_flea", "snkrdunk"],
+    "searchTerms": [
+      "リザードンex SAR 201/165",
+      "リザードン ex sar 201 165",
+      "ポケモンカード151 リザードンex SAR"
+    ],
+    "riskGroup": "raw",
+    "cleanExitJpy": 59000,
+    "damagedExitJpy": 50000,
+    "exitCostsJpy": 1600,
+    "salvageJpy": 5000,
+    "liquidityScore": 0.9,
+    "notes": ["high value raw single"],
+    "active": true
+  },
+  {
+    "id": "munch-evie-287-smp",
+    "title": "イーブイ ムンク展 プロモ 287/SM-P",
+    "marketplaces": ["mercari", "yahoo_flea", "snkrdunk"],
+    "searchTerms": [
+      "イーブイ ムンク展 プロモ 287/SM-P",
+      "ムンク イーブイ 287 SM-P",
+      "Munch Eevee"
+    ],
+    "riskGroup": "raw",
+    "cleanExitJpy": 20000,
+    "damagedExitJpy": 17000,
+    "exitCostsJpy": 1200,
+    "salvageJpy": 2500,
+    "liquidityScore": 0.7,
+    "notes": ["thin but expensive promo"],
+    "active": true
+  }
+]

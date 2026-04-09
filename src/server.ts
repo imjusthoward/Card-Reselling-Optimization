@@ -3,8 +3,20 @@ import { URL } from 'node:url'
 import {
   buildMvpReport,
   formatMvpReport,
-  type NotificationChannel
+  type AuthenticityLabel,
+  type ConditionLabel,
+  type Marketplace,
+  type NotificationChannel,
+  type Recommendation,
+  type RiskGroup
 } from './index.js'
+import { createArtifactStore } from './artifacts.js'
+import {
+  listAlexFeedback,
+  loadLatestLiveScan,
+  recordAlexFeedback,
+  runLiveScan
+} from './live.js'
 import {
   buildWorkflowOutputs,
   loadWorkflow,
@@ -21,6 +33,15 @@ interface RuntimeConfig {
   limit?: number
   channel: NotificationChannel
   apiKey?: string
+  storageBucket?: string
+  alexWebhookUrl?: string
+  liveWatchlistLimit?: number
+  liveQueryStrategy?: 'primary' | 'all'
+  liveLimitPerQuery?: number
+  liveSearchConcurrency?: number
+  liveFetchTimeoutMs?: number
+  liveMaxNotifications?: number
+  liveMaxReviews?: number
 }
 
 interface RuntimeSummary {
@@ -79,7 +100,17 @@ function getRuntimeConfig(): RuntimeConfig {
         : resolveWorkflowPath(process.env.ARB_CONFIG_PATH, DEFAULT_CONFIG_PATH),
     limit: parseOptionalInt(process.env.ARB_LIMIT),
     channel: parseChannel(process.env.ARB_CHANNEL),
-    apiKey: process.env.ARB_API_KEY?.trim() || undefined
+    apiKey: process.env.ARB_API_KEY?.trim() || undefined,
+    storageBucket: process.env.ARB_STORAGE_BUCKET?.trim() || process.env.ARB_EVIDENCE_BUCKET?.trim() || undefined,
+    alexWebhookUrl: process.env.ARB_ALEX_WEBHOOK_URL?.trim() || undefined,
+    liveWatchlistLimit: parseOptionalInt(process.env.ARB_LIVE_WATCHLIST_LIMIT),
+    liveQueryStrategy:
+      process.env.ARB_QUERY_STRATEGY?.trim() === 'primary' ? 'primary' : 'all',
+    liveLimitPerQuery: parseOptionalInt(process.env.ARB_LIMIT_PER_QUERY),
+    liveSearchConcurrency: parseOptionalInt(process.env.ARB_SEARCH_CONCURRENCY),
+    liveFetchTimeoutMs: parseOptionalInt(process.env.ARB_FETCH_TIMEOUT_MS),
+    liveMaxNotifications: parseOptionalInt(process.env.ARB_MAX_NOTIFICATIONS),
+    liveMaxReviews: parseOptionalInt(process.env.ARB_MAX_REVIEWS)
   }
 }
 
@@ -125,6 +156,21 @@ function sendText(response: ServerResponse, statusCode: number, payload: string)
   response.end(`${payload}\n`)
 }
 
+async function readJsonBody<T>(request: IncomingMessage): Promise<T> {
+  const chunks: Buffer[] = []
+
+  for await (const chunk of request) {
+    chunks.push(typeof chunk === 'string' ? Buffer.from(chunk) : chunk)
+  }
+
+  const raw = Buffer.concat(chunks).toString('utf8')
+  if (!raw.trim()) {
+    throw new Error('Missing request body')
+  }
+
+  return JSON.parse(raw) as T
+}
+
 async function buildSummaryResponse(config: RuntimeConfig): Promise<RuntimeSummary> {
   const workflow = await loadWorkflow({
     listingsPath: config.listingsPath,
@@ -157,6 +203,7 @@ async function handleRequest(
   const config = getRuntimeConfig()
   const requestUrl = new URL(request.url ?? '/', 'http://localhost')
   const route = requestUrl.pathname
+  const artifactStore = createArtifactStore(config.storageBucket)
 
   if (!hasValidApiKey(request, config.apiKey)) {
     sendJson(response, 401, {
@@ -181,7 +228,17 @@ async function handleRequest(
     sendJson(response, 200, {
       ok: true,
       service: 'arb-api',
-      endpoints: ['/healthz', '/summary', '/notify', '/review']
+      endpoints: [
+        '/healthz',
+        '/summary',
+        '/notify',
+        '/review',
+        '/live/latest',
+        '/live/inbox',
+        '/live/alerts.txt',
+        '/live/feedback',
+        '/live/scan'
+      ]
     })
     return
   }
@@ -189,6 +246,136 @@ async function handleRequest(
   if (request.method === 'GET' && route === '/summary') {
     const summary = await buildSummaryResponse(config)
     sendJson(response, 200, summary)
+    return
+  }
+
+  if (request.method === 'GET' && route === '/live/latest') {
+    const latest = await loadLatestLiveScan(artifactStore)
+    if (!latest) {
+      sendJson(response, 404, {
+        ok: false,
+        error: 'No live scan found'
+      })
+      return
+    }
+
+    sendJson(response, 200, {
+      ok: true,
+      latest
+    })
+    return
+  }
+
+  if (request.method === 'GET' && route === '/live/inbox') {
+    const latest = await loadLatestLiveScan(artifactStore)
+    if (!latest) {
+      sendJson(response, 404, {
+        ok: false,
+        error: 'No live scan found'
+      })
+      return
+    }
+
+    sendJson(response, 200, {
+      ok: true,
+      generatedAt: latest.generatedAt,
+      scanId: latest.scanId,
+      notifications: latest.notifications,
+      reviews: latest.reviews,
+      sourceSummaries: latest.sourceSummaries,
+      unavailableSources: latest.unavailableSources,
+      digest: latest.alexDigest
+    })
+    return
+  }
+
+  if (request.method === 'GET' && route === '/live/alerts.txt') {
+    const latest = await loadLatestLiveScan(artifactStore)
+    if (!latest) {
+      sendText(response, 404, 'No live scan found')
+      return
+    }
+
+    sendText(response, 200, latest.alexDigest)
+    return
+  }
+
+  if (request.method === 'GET' && route === '/live/feedback') {
+    const feedback = await listAlexFeedback(artifactStore)
+    sendJson(response, 200, {
+      ok: true,
+      count: feedback.length,
+      feedback
+    })
+    return
+  }
+
+  if (request.method === 'POST' && route === '/live/feedback') {
+    const body = await readJsonBody<{
+      listingId: string
+      marketplace: string
+      riskGroup: string
+      authenticity: string
+      condition: string
+      recommendedAction?: string
+      realizedProfitJpy?: number
+      confidence?: number
+      notes?: string
+      sourceUrl?: string
+      sourceListingId?: string
+      sourceQuery?: string
+      reviewer?: string
+      reviewedAt?: string
+      followUp?: string
+    }>(request)
+
+    const saved = await recordAlexFeedback(
+      {
+        listingId: body.listingId,
+        marketplace: body.marketplace as Marketplace,
+        riskGroup: body.riskGroup as RiskGroup,
+        authenticity: body.authenticity as AuthenticityLabel,
+        condition: body.condition as ConditionLabel,
+        recommendedAction: body.recommendedAction as Recommendation,
+        realizedProfitJpy: body.realizedProfitJpy,
+        confidence: body.confidence,
+        notes: body.notes,
+        sourceUrl: body.sourceUrl,
+        sourceListingId: body.sourceListingId,
+        sourceQuery: body.sourceQuery,
+        reviewer: body.reviewer,
+        reviewedAt: body.reviewedAt,
+        followUp: body.followUp
+      },
+      artifactStore
+    )
+
+    sendJson(response, 200, {
+      ok: true,
+      feedback: saved
+    })
+    return
+  }
+
+  if (request.method === 'POST' && route === '/live/scan') {
+    const scan = await runLiveScan({
+      watchlistLimit: config.liveWatchlistLimit,
+      queryStrategy: config.liveQueryStrategy,
+      limitPerQuery: config.liveLimitPerQuery,
+      searchConcurrency: config.liveSearchConcurrency,
+      fetchTimeoutMs: config.liveFetchTimeoutMs,
+      maxNotifications: config.liveMaxNotifications,
+      maxReviews: config.liveMaxReviews,
+      notificationChannel: config.channel,
+      artifactStore,
+      alexWebhookUrl: config.alexWebhookUrl,
+      notifyAlex: false
+    })
+
+    sendJson(response, 200, {
+      ok: true,
+      scan
+    })
     return
   }
 
@@ -236,7 +423,18 @@ async function handleRequest(
   sendJson(response, 404, {
     ok: false,
     error: 'Not found',
-    routes: ['/healthz', '/summary', '/notify', '/review', '/summary.txt']
+    routes: [
+      '/healthz',
+      '/summary',
+      '/notify',
+      '/review',
+      '/summary.txt',
+      '/live/latest',
+      '/live/inbox',
+      '/live/alerts.txt',
+      '/live/feedback',
+      '/live/scan'
+    ]
   })
 }
 

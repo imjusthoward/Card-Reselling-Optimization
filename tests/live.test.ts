@@ -1,0 +1,155 @@
+import { mkdtemp, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { describe, expect, it } from 'vitest'
+import {
+  loadLiveState,
+  parseMarketplaceSearchPage,
+  runLiveScan,
+  saveLiveState,
+  selectFreshAlerts,
+  type LiveMarketplace
+} from '../src/live.js'
+import type { ArtifactStore } from '../src/artifacts.js'
+import type { LiveScanResult, LiveState } from '../src/live.js'
+
+class MemoryArtifactStore implements ArtifactStore {
+  private readonly files = new Map<string, unknown>()
+
+  async writeJson(path: string, value: unknown): Promise<void> {
+    this.files.set(path, structuredClone(value))
+  }
+
+  async readJson<T>(path: string): Promise<T | null> {
+    return this.files.has(path) ? (structuredClone(this.files.get(path)) as T) : null
+  }
+
+  async list(prefix: string): Promise<string[]> {
+    return [...this.files.keys()].filter(key => key.startsWith(prefix)).sort()
+  }
+}
+
+const yahooHtml = `
+  <html>
+    <body>
+      <a href="/item/z12345" data-cl-params="sellerid:p111;price:18000;">
+        <img alt="テラスタルフェスex ボックス" src="https://example.com/yahoo.jpg" />
+        <p>18,000<!-- -->円</p>
+      </a>
+    </body>
+  </html>
+`
+
+const snkrdunkHtml = `
+  <html>
+    <body>
+      <a class="productTile" href="https://snkrdunk.com/apparels/424297" aria-label="テラスタルフェスex ボックス - ¥17,500">
+        <img src="https://example.com/snkr.jpg" alt="テラスタルフェスex ボックス" />
+      </a>
+    </body>
+  </html>
+`
+
+function makeFetch(): typeof fetch {
+  return (async (input: Parameters<typeof fetch>[0]) => {
+    const url = typeof input === 'string' ? input : input.toString()
+
+    if (url.includes('paypayfleamarket.yahoo.co.jp')) {
+      return new Response(yahooHtml, { status: 200 })
+    }
+
+    if (url.includes('snkrdunk.com')) {
+      return new Response(snkrdunkHtml, { status: 200 })
+    }
+
+    return new Response('<html></html>', { status: 200 })
+  }) as typeof fetch
+}
+
+async function createTempWatchlist(): Promise<string> {
+  const dir = await mkdtemp(join(tmpdir(), 'arb-watchlist-'))
+  const watchlistPath = join(dir, 'watchlist.json')
+  const watchlist = [
+    {
+      id: 'terastal-fes-ex-box',
+      title: 'テラスタルフェスex ボックス',
+      marketplaces: ['yahoo_flea', 'snkrdunk'] as LiveMarketplace[],
+      searchTerms: ['テラスタルフェスex ボックス'],
+      riskGroup: 'sealed',
+      cleanExitJpy: 25000,
+      damagedExitJpy: 21000,
+      exitCostsJpy: 1000,
+      salvageJpy: 15000,
+      liquidityScore: 0.92,
+      active: true
+    }
+  ]
+
+  await writeFile(watchlistPath, `${JSON.stringify(watchlist, null, 2)}\n`, 'utf8')
+  return watchlistPath
+}
+
+describe('live scan', () => {
+  it('parses live marketplace search pages', () => {
+    const yahoo = parseMarketplaceSearchPage(
+      'yahoo_flea',
+      yahooHtml,
+      'テラスタルフェスex ボックス'
+    )
+    const snkr = parseMarketplaceSearchPage(
+      'snkrdunk',
+      snkrdunkHtml,
+      'テラスタルフェスex ボックス'
+    )
+
+    expect(yahoo).toHaveLength(1)
+    expect(yahoo[0].sourceListingId).toBe('z12345')
+    expect(yahoo[0].sourceQuery).toBe('テラスタルフェスex ボックス')
+    expect(snkr).toHaveLength(1)
+    expect(snkr[0].sourceListingId).toBe('424297')
+  })
+
+  it('scans, writes inbox artifacts, and suppresses duplicate alerts on repeat', async () => {
+    const watchlistPath = await createTempWatchlist()
+    const artifactStore = new MemoryArtifactStore()
+    const fetchImpl = makeFetch()
+
+    const first = await runLiveScan({
+      watchlistPath,
+      labelsPath: 'data/sample-labels.json',
+      configPath: 'data/scoring-config.json',
+      watchlistLimit: 1,
+      queryStrategy: 'primary',
+      sourceFilter: ['yahoo_flea', 'snkrdunk'],
+      limitPerQuery: 5,
+      searchConcurrency: 2,
+      fetchTimeoutMs: 2000,
+      maxNotifications: 5,
+      maxReviews: 5,
+      artifactStore,
+      fetchImpl,
+      notifyAlex: false
+    })
+
+    expect(first.scrapedListings.length).toBeGreaterThanOrEqual(2)
+    expect(first.notifications.length).toBeGreaterThanOrEqual(1)
+    expect(await artifactStore.readJson<LiveScanResult>('scans/latest.json')).not.toBeNull()
+    const emptyState = await loadLiveState(artifactStore)
+    expect(emptyState).toEqual({ entries: {} })
+
+    const initialSelection = selectFreshAlerts(first, emptyState, {
+      cooldownMinutes: 10
+    })
+    await saveLiveState(initialSelection.state, artifactStore)
+
+    const stateAfterFirst = await loadLiveState(artifactStore)
+    expect(Object.keys(stateAfterFirst.entries)).toHaveLength(first.scores.length)
+
+    const secondSelection = selectFreshAlerts(first, stateAfterFirst, {
+      cooldownMinutes: 10
+    })
+
+    expect(secondSelection.freshNotifications).toHaveLength(0)
+    expect(secondSelection.freshReviews).toHaveLength(0)
+  })
+})

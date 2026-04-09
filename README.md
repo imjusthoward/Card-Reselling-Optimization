@@ -8,6 +8,8 @@ This repo is intentionally small and explainable:
 - `src/score.ts` scores listings as `buy`, `watch`, or `pass`
 - `src/mvp.ts` turns scores into notification packets, review packets, and an MVP report
 - `src/cli.ts` scores JSON listings from the command line
+- `src/scan.ts` runs the live marketplace scan and prints the alert digest
+- `src/worker.ts` keeps the live scan running on a 30-second loop
 - `docs/trader-manual.md` tells the trader what data to provide and how to label it
 - `docs/reference-map.md` explains which cloned repos informed each layer
 
@@ -29,6 +31,8 @@ npm run score -- --listings data/sample-listings.json --labels data/sample-label
 npm run notify
 npm run review
 npm run summary
+npm run scan -- --output digest --watchlist-limit 1 --query-strategy primary --source-filter yahoo_flea,snkrdunk --no-notify-alex
+npm run live:worker
 ```
 
 ## Files to edit first
@@ -46,15 +50,18 @@ npm run summary
 3. Route `review` output to the trader for human labeling.
 4. Save labels back into `data/sample-labels.json` or a separate label file.
 5. Run `npm run summary` to see pipeline health, label coverage, and what infrastructure is actually needed now.
+6. Use `npm run scan` or `npm run live:worker` for the low-latency alert loop.
+7. Send Alex feedback back through `POST /live/feedback` or the live worker webhook so the model keeps learning.
 
 ## Infrastructure to procure now
 
 For the MVP in this repo, you do not need a large stack. The minimum is:
 
-- one always-on scheduler or worker
-- one notification sink, such as Telegram, WhatsApp, SMS, or a simple dashboard
+- one always-on worker or VM running a 30-second poll loop
+- one notification sink, such as Telegram, WhatsApp, SMS, email, or a simple dashboard
 - append-only label storage for trader feedback
 - secret storage for API keys and webhook tokens
+- a shared artifact bucket for live scans, alerts, and feedback
 
 Everything else can wait until the signal quality is proven.
 
@@ -64,6 +71,7 @@ The current deployed stack is in `japan-tcg-arb-260409`:
 
 - Cloud Run service: `arb-api`
 - Cloud Run job: `arb-scan`
+- live worker: `arb-live-worker`
 - Cloud SQL instance: `arb-postgres`
 - BigQuery dataset: `arb_analytics`
 - Artifact Registry repo: `arb-images`

@@ -2,7 +2,7 @@ node_modules
 dist
 coverage
 vendor/reference
+data/artifacts
 .env
 .env.*
 *.log
-

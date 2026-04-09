@@ -15,12 +15,19 @@
     "dev": "tsx src/cli.ts",
     "dev:api": "tsx src/server.ts",
     "dev:job": "tsx src/job.ts",
+    "dev:worker": "tsx src/worker.ts",
+    "scan": "tsx src/scan.ts",
+    "live:worker": "tsx src/worker.ts",
     "score": "tsx src/cli.ts",
     "notify": "tsx src/cli.ts --output notify",
     "review": "tsx src/cli.ts --output review",
     "summary": "tsx src/cli.ts --output summary",
     "start:api": "node dist/src/server.js",
-    "start:job": "node dist/src/job.js"
+    "start:job": "node dist/src/job.js",
+    "start:worker": "node dist/src/worker.js"
+  },
+  "dependencies": {
+    "@google-cloud/storage": "^7.17.2"
   },
   "devDependencies": {
     "@types/node": "^22.15.3",

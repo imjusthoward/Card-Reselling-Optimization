@@ -48,6 +48,13 @@ export interface OpportunityListing {
   sellerSignals?: SellerSignals
   liquidityScore?: number
   conditionConfidence?: number
+  sourceUrl?: string
+  sourceListingId?: string
+  sourceQuery?: string
+  matchedWatchlistId?: string
+  matchedWatchlistTitle?: string
+  scrapedAt?: string
+  imageUrls?: string[]
   notes?: string[]
 }
 
@@ -61,6 +68,12 @@ export interface TraderLabel {
   realizedProfitJpy?: number
   confidence?: number
   notes?: string
+  sourceUrl?: string
+  sourceListingId?: string
+  sourceQuery?: string
+  reviewer?: string
+  reviewedAt?: string
+  followUp?: string
 }
 
 export interface CalibrationInput {
@@ -110,4 +123,38 @@ export interface OpportunityScore {
   priorityScore: number
   recommendation: Recommendation
   reasons: string[]
+}
+
+export interface WatchlistEntry {
+  id: string
+  title: string
+  marketplaces: Marketplace[]
+  searchTerms: string[]
+  riskGroup: RiskGroup
+  cleanExitJpy: number
+  damagedExitJpy: number
+  exitCostsJpy?: number
+  salvageJpy?: number
+  liquidityScore?: number
+  hasMarketplaceAuthentication?: boolean
+  priceSheetMatch?: boolean
+  notes?: string[]
+  active?: boolean
+}
+
+export interface ScrapedListing {
+  marketplace: Marketplace
+  sourceUrl: string
+  sourceListingId: string
+  sourceQuery?: string
+  title: string
+  askingPriceJpy: number
+  imageUrl?: string
+  sellerId?: string
+  sellerRating?: number
+  sellerSalesCount?: number
+  sellerResponseRate?: number
+  likeCount?: number
+  isPriceDown?: boolean
+  notes?: string[]
 }

@@ -75,6 +75,8 @@ If the listing has only one weak photo, do not force a verdict.
 - `npm run notify` prints the top buy candidates as alert payloads.
 - `npm run review` prints the buy and watch candidates as review packets for manual labeling.
 - `npm run summary` prints the pipeline report, label stats, and infrastructure checklist.
+- `npm run scan` prints the live alert digest from Mercari, Yahoo Flea, and SNKRDUNK.
+- `npm run live:worker` keeps the live alert loop running and forwards fresh alerts to Alex.
 
 The trader should keep the feedback loop short:
 
@@ -83,6 +85,20 @@ The trader should keep the feedback loop short:
 3. Record the actual action you would take.
 4. Add notes that explain the evidence, not the conclusion.
 5. Add realized profit only after the item is sold.
+
+## Alex feedback format
+
+When an alert lands, reply with the shortest evidence-first review you can:
+
+- `authenticity: authentic | fake | uncertain`
+- `condition: clean | damaged | uncertain`
+- `recommendedAction: buy | watch | pass`
+- `confidence: 0 to 1`
+- `notes: short reason`
+
+If the item is a slab, include the cert status and whether the slab itself is damaged.
+If the item is raw, include whether the back photo is strong enough to trust.
+If the item is sealed, call out shrink quality and box corners.
 
 ## Recommended review format
 

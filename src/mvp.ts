@@ -34,6 +34,11 @@ export interface NotificationPayload {
   traderAction: Recommendation
   summary: string
   reasons: string[]
+  sourceUrl?: string
+  sourceListingId?: string
+  sourceQuery?: string
+  matchedWatchlistId?: string
+  matchedWatchlistTitle?: string
 }
 
 export interface ReviewField {
@@ -59,6 +64,11 @@ export interface TraderReviewPacket {
   evidence: string[]
   question: string
   labelFields: ReviewField[]
+  sourceUrl?: string
+  sourceListingId?: string
+  sourceQuery?: string
+  matchedWatchlistId?: string
+  matchedWatchlistTitle?: string
 }
 
 export interface ScorePipelineSummary {
@@ -176,7 +186,12 @@ export function buildNotificationPayload(
     priorityScore: score.priorityScore,
     traderAction: score.recommendation,
     summary: `${score.recommendation.toUpperCase()} | ask ${formatJpy(score.listing.askingPriceJpy)} | EV ${formatJpy(score.expectedNetJpy)} | confidence ${formatPercent(score.confidence)} | auth ${formatPercent(score.authProbability)}`,
-    reasons: [...score.reasons]
+    reasons: [...score.reasons],
+    sourceUrl: score.listing.sourceUrl,
+    sourceListingId: score.listing.sourceListingId,
+    sourceQuery: score.listing.sourceQuery,
+    matchedWatchlistId: score.listing.matchedWatchlistId,
+    matchedWatchlistTitle: score.listing.matchedWatchlistTitle
   }
 }
 
@@ -286,8 +301,41 @@ export function buildTraderReviewPacket(
         allowedValues: ['integer'],
         guidance: 'Fill this after sale, even if the result is negative.'
       }
-    ]
+    ],
+    sourceUrl: score.listing.sourceUrl,
+    sourceListingId: score.listing.sourceListingId,
+    sourceQuery: score.listing.sourceQuery,
+    matchedWatchlistId: score.listing.matchedWatchlistId,
+    matchedWatchlistTitle: score.listing.matchedWatchlistTitle
   }
+}
+
+export function formatNotificationPayload(payload: NotificationPayload): string {
+  const lines = [
+    `${payload.stage.toUpperCase()} ${payload.marketplace.toUpperCase()} ${payload.title}`,
+    `ask ${formatJpy(payload.askingPriceJpy)} | EV ${formatJpy(payload.expectedNetJpy)} | return ${formatPercent(payload.expectedReturnPct)} | auth ${formatPercent(payload.authProbability)} | confidence ${formatPercent(payload.confidence)}`,
+    payload.sourceUrl ? `link ${payload.sourceUrl}` : undefined,
+    payload.sourceQuery ? `query ${payload.sourceQuery}` : undefined,
+    payload.matchedWatchlistTitle ? `match ${payload.matchedWatchlistTitle}` : undefined,
+    payload.reasons.length > 0 ? `why ${payload.reasons.join(', ')}` : undefined
+  ].filter((line): line is string => line != null)
+
+  return lines.join('\n')
+}
+
+export function formatTraderReviewPacket(packet: TraderReviewPacket): string {
+  const lines = [
+    `${packet.stage.toUpperCase()} ${packet.marketplace.toUpperCase()} ${packet.title}`,
+    `ask ${formatJpy(packet.askingPriceJpy)} | clean ${formatJpy(packet.cleanExitJpy)} | damaged ${formatJpy(packet.damagedExitJpy)}`,
+    `EV ${formatJpy(packet.expectedNetJpy)} | return ${formatPercent(packet.expectedReturnPct)} | auth ${formatPercent(packet.authProbability)} | clean ${formatPercent(packet.cleanProbability)} | confidence ${formatPercent(packet.confidence)}`,
+    packet.sourceUrl ? `link ${packet.sourceUrl}` : undefined,
+    packet.sourceQuery ? `query ${packet.sourceQuery}` : undefined,
+    packet.matchedWatchlistTitle ? `match ${packet.matchedWatchlistTitle}` : undefined,
+    packet.evidence.length > 0 ? `evidence ${packet.evidence.join(', ')}` : undefined,
+    `question ${packet.question}`
+  ].filter((line): line is string => line != null)
+
+  return lines.join('\n')
 }
 
 export function summarizeScorePipeline(

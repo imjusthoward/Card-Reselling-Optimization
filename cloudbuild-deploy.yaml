@@ -12,7 +12,7 @@ steps:
         "--allow-unauthenticated",
         "--service-account=arb-runtime@$PROJECT_ID.iam.gserviceaccount.com",
         "--set-cloudsql-instances=$PROJECT_ID:asia-northeast1:arb-postgres",
-        "--set-env-vars=ARB_LISTINGS_PATH=data/sample-listings.json,ARB_LABELS_PATH=data/sample-labels.json,ARB_CONFIG_PATH=data/scoring-config.json,ARB_CHANNEL=dashboard,GCP_REGION=asia-northeast1",
+        "--set-env-vars=ARB_LISTINGS_PATH=data/sample-listings.json,ARB_LABELS_PATH=data/sample-labels.json,ARB_CONFIG_PATH=data/scoring-config.json,ARB_CHANNEL=dashboard,GCP_REGION=asia-northeast1,ARB_STORAGE_BUCKET=japan-tcg-arb-evidence-453828005739,ARB_LIVE_WATCHLIST_LIMIT=6,ARB_QUERY_STRATEGY=primary,ARB_LIMIT_PER_QUERY=5,ARB_SEARCH_CONCURRENCY=4,ARB_FETCH_TIMEOUT_MS=5000,ARB_MAX_NOTIFICATIONS=3,ARB_MAX_REVIEWS=5,ARB_NOTIFY_ALEX=false",
         "--set-secrets=ARB_API_KEY=arb-service-credentials:latest",
         "--cpu=1",
         "--memory=1Gi",
