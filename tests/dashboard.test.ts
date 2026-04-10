@@ -13,6 +13,8 @@ describe('dashboard html', () => {
     expect(html).toContain('Selected listing')
     expect(html).toContain('Alex Notes')
     expect(html).toContain('Calibration Status')
+    expect(html).toContain('workspace-summary')
+    expect(html).toContain('summary-grid')
     expect(html).toContain('feedback-form')
     expect(html).toContain('scan-button')
     expect(html).toContain('Copy digest')
@@ -20,6 +22,7 @@ describe('dashboard html', () => {
     expect(html).toContain('used in calibration')
     expect(html).toContain('Cross-list drafts')
     expect(html).toContain('draft-list')
+    expect(html).toContain('digest-panel')
   })
 
   it('persists in-progress feedback drafts across refreshes', () => {
@@ -38,6 +41,8 @@ describe('dashboard html', () => {
     expect(html).toContain('feedback-note')
     expect(html).toContain('draft-row')
     expect(html).toContain('draft-plan')
+    expect(html).toContain('source-group')
+    expect(html).toContain('Approval-only draft')
   })
 
   it('renders every feedback row and shows calibration supersession for duplicate notes', () => {

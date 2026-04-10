@@ -401,6 +401,54 @@ h2 {
   gap: 0;
 }
 
+#workspace-summary {
+  padding: 16px 20px 14px;
+  border-bottom: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.42);
+}
+
+.summary-band {
+  display: grid;
+  gap: 12px;
+}
+
+.summary-label {
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  color: var(--muted);
+}
+
+.summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.summary-metric {
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+
+.summary-metric small {
+  display: block;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  font-size: 0.72rem;
+}
+
+.summary-metric strong {
+  display: block;
+  margin-top: 5px;
+  font-size: 1rem;
+}
+
+.summary-metric .subtle {
+  margin-top: 5px;
+  line-height: 1.4;
+}
+
 .item,
 .card,
 .empty {
@@ -413,6 +461,8 @@ h2 {
   position: relative;
   border-left: 5px solid transparent;
   transition: background 160ms ease, border-color 160ms ease, transform 160ms ease;
+  display: grid;
+  gap: 8px;
 }
 
 .item:hover,
@@ -446,6 +496,13 @@ h2 {
   line-height: 1.2;
   font-weight: 650;
   letter-spacing: -0.02em;
+}
+
+.item .title {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 .row,
@@ -705,6 +762,70 @@ textarea { min-height: 96px; resize: vertical; }
   line-height: 1.45;
 }
 
+.source-group {
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--line);
+}
+
+.source-group summary {
+  list-style: none;
+  cursor: pointer;
+}
+
+.source-group summary::-webkit-details-marker {
+  display: none;
+}
+
+.source-group-header {
+  display: grid;
+  gap: 6px;
+}
+
+.source-query-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+  padding-left: 2px;
+}
+
+.source-query-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 10px;
+  align-items: center;
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+
+.source-query-row strong {
+  color: var(--ink);
+  font-weight: 650;
+}
+
+.digest-panel {
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.55);
+  padding: 0;
+}
+
+.digest-panel > summary {
+  list-style: none;
+  cursor: pointer;
+  padding: 12px 14px;
+  font-weight: 650;
+}
+
+.digest-panel > summary::-webkit-details-marker {
+  display: none;
+}
+
+.digest-panel .digest {
+  border: 0;
+  border-radius: 0 0 14px 14px;
+  border-top: 1px solid var(--line);
+}
+
 .empty {
   color: var(--muted);
 }
@@ -713,6 +834,7 @@ textarea { min-height: 96px; resize: vertical; }
   main { grid-template-columns: 1fr; }
   section + section { border-left: 0; border-top: 1px solid var(--line); }
   .frame { grid-template-columns: 1fr; }
+  .summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 @media (max-width: 720px) {
@@ -723,6 +845,22 @@ textarea { min-height: 96px; resize: vertical; }
 
   #status-line {
     text-align: left;
+  }
+
+  #workspace-summary {
+    padding: 14px 16px 12px;
+  }
+
+  .summary-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .summary-metric strong {
+    font-size: 0.96rem;
+  }
+
+  .source-query-row {
+    align-items: flex-start;
   }
 }
 `
@@ -747,6 +885,7 @@ const state = {
 };
 
 const nodes = {
+  summary: document.getElementById('workspace-summary'),
   status: document.getElementById('status-line'),
   accessKey: document.getElementById('access-key'),
   unlockButton: document.getElementById('unlock-button'),
@@ -1082,6 +1221,81 @@ function summarizeCalibrationFeedback(labels) {
   };
 }
 
+function summarizeSourceHealth(sourceSummaries) {
+  var rank = {
+    error: 3,
+    unsupported: 2,
+    empty: 1,
+    ok: 0
+  };
+  var order = {
+    mercari: 0,
+    yahoo_flea: 1,
+    snkrdunk: 2,
+    yahoo_auction: 3,
+    other: 4
+  };
+  var groups = new Map();
+
+  sourceSummaries.forEach(function (summary) {
+    var marketplace = String(summary && summary.marketplace ? summary.marketplace : 'other');
+    var current = groups.get(marketplace) || {
+      marketplace: marketplace,
+      status: 'ok',
+      queryCount: 0,
+      resultCount: 0,
+      note: '',
+      queries: []
+    };
+
+    current.queryCount += 1;
+    current.resultCount += Number(summary && summary.resultCount ? summary.resultCount : 0);
+    if (summary && summary.durationMs != null) {
+      current.durationMs = Math.max(current.durationMs || 0, Number(summary.durationMs || 0));
+    }
+    current.queries.push({
+      query: String(summary && summary.query ? summary.query : ''),
+      resultCount: Number(summary && summary.resultCount ? summary.resultCount : 0),
+      status: String(summary && summary.status ? summary.status : 'ok'),
+      note: summary && summary.note ? summary.note : undefined,
+      durationMs: summary && summary.durationMs != null ? summary.durationMs : undefined
+    });
+
+    if ((rank[String(summary && summary.status ? summary.status : 'ok')] || 0) >= (rank[current.status] || 0)) {
+      current.status = String(summary && summary.status ? summary.status : 'ok');
+      if (summary && summary.note) {
+        current.note = String(summary.note);
+      }
+    } else if (!current.note && summary && summary.note) {
+      current.note = String(summary.note);
+    }
+
+    groups.set(marketplace, current);
+  });
+
+  return [...groups.values()].sort(function (left, right) {
+    var leftRank = order[left.marketplace] ?? 99;
+    var rightRank = order[right.marketplace] ?? 99;
+    if (leftRank !== rightRank) {
+      return leftRank - rightRank;
+    }
+
+    return left.marketplace.localeCompare(right.marketplace);
+  });
+}
+
+function getQueueDecisionLabel(item) {
+  if (!item) {
+    return 'Unknown';
+  }
+
+  if (item.kind === 'buy') {
+    return Number(item.priorityScore || 0) >= 5000 ? 'Good deal' : 'Buy candidate';
+  }
+
+  return 'Needs review';
+}
+
 function buildFeedbackListHtml(labels, latest) {
   if (!labels.length) {
     return '<div class="empty"><strong>No labeled feedback yet.</strong><div class="subtle">Alex can add the first review after the initial live queue loads.</div></div>';
@@ -1160,6 +1374,76 @@ function buildFeedbackListHtml(labels, latest) {
   ].join('');
 }
 
+function renderWorkspaceSummary() {
+  if (!nodes.summary) {
+    return;
+  }
+
+  var latest = state.latest;
+  if (!latest) {
+    nodes.summary.innerHTML = '<div class="empty"><strong>Live snapshot is waiting on the first scan.</strong><div class="subtle">Unlock the dashboard, run a scan, and the queue will populate here.</div></div>';
+    return;
+  }
+
+  var sourceSummaries = Array.isArray(latest.sourceSummaries) ? latest.sourceSummaries : [];
+  var groupedSources = summarizeSourceHealth(sourceSummaries);
+  var queueCount = state.items.length;
+  var buyCount = state.items.filter(function (item) { return item.kind === 'buy'; }).length;
+  var reviewCount = queueCount - buyCount;
+  var feedback = summarizeFeedback(state.feedback);
+  var topItem = getSelectedItem() || state.items[0] || null;
+  var coverageHeadline = groupedSources.length > 0
+    ? groupedSources.map(function (group) {
+        if (group.marketplace === 'mercari' && group.status === 'unsupported') {
+          return 'Mercari pending';
+        }
+
+        if (group.marketplace === 'mercari') {
+          return 'Mercari live';
+        }
+
+        if (group.marketplace === 'yahoo_flea') {
+          return 'Yahoo Flea live';
+        }
+
+        if (group.marketplace === 'snkrdunk') {
+          return 'SNKRDUNK live';
+        }
+
+        return String(group.marketplace);
+      }).join(' • ')
+    : 'No source data yet';
+
+  nodes.summary.innerHTML = [
+    '<div class="summary-band">',
+    '<div class="summary-label">Live snapshot</div>',
+    '<div class="summary-grid">',
+    '<div class="summary-metric">',
+    '<small>Queue</small>',
+    '<strong>' + String(queueCount) + ' live items</strong>',
+    '<div class="subtle">' + String(buyCount) + ' buy • ' + String(reviewCount) + ' review</div>',
+    '</div>',
+    '<div class="summary-metric">',
+    '<small>Focus</small>',
+    '<strong>' + escapeHtml(topItem ? getQueueDecisionLabel(topItem) : 'Waiting for scan') + '</strong>',
+    '<div class="subtle">' + escapeHtml(topItem ? (String(topItem.marketplace || 'other') + ' • ' + String(topItem.title || '').slice(0, 70)) : 'Run a scan to populate the queue.') + '</div>',
+    '</div>',
+    '<div class="summary-metric">',
+    '<small>Feedback</small>',
+    '<strong>' + String(feedback.total) + ' labels</strong>',
+    '<div class="subtle">' + String(feedback.used) + ' used in calibration • ' + String(feedback.superseded) + ' superseded</div>',
+    '</div>',
+    '<div class="summary-metric">',
+    '<small>Coverage</small>',
+    '<strong>' + String(groupedSources.length) + ' marketplaces</strong>',
+    '<div class="subtle">' + escapeHtml(coverageHeadline) + '</div>',
+    '</div>',
+    '</div>',
+    '<div class="subtle">' + escapeHtml(topItem ? 'Open the highlighted review item first. Confirm identification, then decide buy, watch, or pass.' : 'Use the access key to unlock live data and populate the queue.') + '</div>',
+    '</div>'
+  ].join('');
+}
+
 function renderSourceHealth() {
   if (!nodes.health) {
     return;
@@ -1194,6 +1478,7 @@ function renderSourceHealth() {
   var topSentimentSignals = sentimentSummary && Array.isArray(sentimentSummary.topicSignals)
     ? sentimentSummary.topicSignals.slice(0, 3)
     : [];
+  var groupedSources = summarizeSourceHealth(sourceSummaries);
 
   var rows = [
     '<div class="health-row">',
@@ -1236,27 +1521,50 @@ function renderSourceHealth() {
     '</div>'
   ];
 
-  sourceSummaries.forEach(function (summary) {
-    var note = summary.note || (summary.status === 'unsupported'
+  rows.push.apply(rows, groupedSources.map(function (group) {
+    var note = group.note || (group.status === 'unsupported'
       ? 'Public HTML did not expose listing cards.'
-      : summary.status === 'empty'
+      : group.status === 'empty'
         ? 'No relevant results.'
-        : '');
-    rows.push([
-      '<div class="health-row">',
-      '<div>',
+        : 'Source scan completed.');
+    var marketplaceLabel = group.marketplace === 'mercari'
+      ? 'Mercari'
+      : group.marketplace === 'yahoo_flea'
+        ? 'Yahoo Flea'
+        : group.marketplace === 'snkrdunk'
+          ? 'SNKRDUNK'
+          : group.marketplace;
+    return [
+      '<details class="source-group"' + (group.marketplace === 'mercari' ? ' open' : '') + '>',
+      '<summary>',
+      '<div class="source-group-header">',
       '<div class="meta">',
-      '<span class="pill">' + escapeHtml(summary.marketplace) + '</span>',
-      '<span class="pill">' + escapeHtml(summary.status) + '</span>',
-      '<span class="pill">' + String(summary.resultCount) + ' results</span>',
-      summary.durationMs != null ? '<span class="pill timestamp">' + String(summary.durationMs) + 'ms</span>' : '',
+      '<span class="pill">' + escapeHtml(marketplaceLabel) + '</span>',
+      '<span class="pill">' + escapeHtml(group.status) + '</span>',
+      '<span class="pill">' + String(group.queryCount) + ' queries</span>',
+      '<span class="pill">' + String(group.resultCount) + ' results</span>',
+      group.durationMs != null ? '<span class="pill timestamp">' + String(group.durationMs) + 'ms</span>' : '',
       '</div>',
-      '<strong>' + escapeHtml(summary.query || 'no query') + '</strong>',
-      '<div class="subtle">' + escapeHtml(note || 'Source scan completed.') + '</div>',
+      '<strong>' + escapeHtml(marketplaceLabel) + '</strong>',
+      '<div class="subtle">' + escapeHtml(note) + '</div>',
       '</div>',
-      '</div>'
-    ].join(''));
-  });
+      '</summary>',
+      '<div class="source-query-list">',
+      group.queries.map(function (query) {
+        return [
+          '<div class="source-query-row">',
+          '<strong>' + escapeHtml(query.query || 'no query') + '</strong>',
+          '<span class="pill">' + escapeHtml(query.status) + '</span>',
+          '<span class="pill">' + String(query.resultCount) + ' results</span>',
+          query.durationMs != null ? '<span class="pill timestamp">' + String(query.durationMs) + 'ms</span>' : '',
+          query.note ? '<span class="subtle">' + escapeHtml(query.note) + '</span>' : '',
+          '</div>'
+        ].join('');
+      }).join(''),
+      '</div>',
+      '</details>'
+    ].join('');
+  }));
 
   nodes.health.innerHTML = rows.join('');
 }
@@ -1428,10 +1736,11 @@ function renderQueue() {
     var signalClass = getSignalClass(item);
     var reasons = Array.isArray(item.reasons) ? item.reasons.slice(0, 2).join(' • ') : '';
     var listedAt = item.scrapedAt || item.scanGeneratedAt || (state.latest && state.latest.generatedAt) || '';
+    var decisionLabel = getQueueDecisionLabel(item);
     return [
       '<button class="item ' + signalClass + selected + '" type="button" data-listing-id="' + escapeHtml(item.listingId) + '">',
       '<div class="meta">',
-      '<span class="pill ' + (item.kind === 'buy' ? 'buy' : 'review') + '">' + item.kind + '</span>',
+      '<span class="pill ' + (item.kind === 'buy' ? 'buy' : 'review') + '">' + escapeHtml(decisionLabel) + '</span>',
       '<span class="pill">' + escapeHtml(item.marketplace) + '</span>',
       '<span class="pill">#' + String(index + 1).padStart(2, '0') + '</span>',
       '<span class="pill timestamp">scan ' + escapeHtml(listedAt ? formatClock(listedAt) : 'n/a') + '</span>',
@@ -1469,13 +1778,13 @@ function buildCrossListDraftHtml(drafts) {
     return [
       '<div class="card draft-row">',
       '<div class="meta">',
-      '<span class="pill buy">draft</span>',
+      '<span class="pill buy">Approval-only draft</span>',
       '<span class="pill">' + escapeHtml(draft.targetMarketplace || 'ebay') + '</span>',
       '<span class="pill">' + escapeHtml(draft.sourceMarketplace || 'other') + '</span>',
       '<span class="pill">#' + String(index + 1).padStart(2, '0') + '</span>',
       '</div>',
       '<div class="title" style="font-size: 0.95rem; margin-top: 4px;">' + escapeHtml(draft.title || 'Untitled draft') + '</div>',
-      '<div class="subtle">' + escapeHtml(draft.suggestedPriceLabel || formatJpy(draft.suggestedPriceJpy || 0)) + ' • approval-only</div>',
+      '<div class="subtle">Suggested list price ' + escapeHtml(draft.suggestedPriceLabel || formatJpy(draft.suggestedPriceJpy || 0)) + '</div>',
       '<div class="row" style="margin-top: 8px;">',
       '<span class="pill">source ' + escapeHtml(draft.sourceListingId || 'n/a') + '</span>',
       '<span class="pill">list ' + escapeHtml(draft.sourceQuery || 'n/a') + '</span>',
@@ -1574,10 +1883,10 @@ function renderDetail() {
     '<li>What is the one-line reason?</li>',
     '</ul>',
     '</div>',
-    '<div>',
-    '<strong>Alert digest</strong>',
+    '<details class="digest-panel">',
+    '<summary>Alert digest</summary>',
     '<pre class="digest" id="digest-block">' + escapeHtml(state.latest && state.latest.alexDigest ? state.latest.alexDigest : 'No digest available yet.') + '</pre>',
-    '</div>',
+    '</details>',
     '<form id="feedback-form">',
     '<input type="hidden" name="listingId" />',
     '<input type="hidden" name="marketplace" />',
@@ -1636,6 +1945,7 @@ function renderDetail() {
 }
 
 function renderAll() {
+  renderWorkspaceSummary();
   renderQueue();
   renderSourceHealth();
   renderDetail();
@@ -1693,10 +2003,12 @@ async function refresh(options) {
     state.items = [];
     state.feedback = [];
     state.latest = null;
+    renderWorkspaceSummary();
     renderQueue();
     renderSourceHealth();
     renderDetail();
     renderFeedbackList();
+    renderCrossListDrafts();
     renderStatus();
     return;
   }
@@ -1733,6 +2045,7 @@ async function refresh(options) {
     state.selectedId = resolveSelectedIdAfterRefresh(state.selectedId, state.items, preserveDetail);
 
     if (preserveDetail) {
+      renderWorkspaceSummary();
       renderQueue();
       renderSourceHealth();
       renderFeedbackList();
@@ -1747,6 +2060,7 @@ async function refresh(options) {
     state.error = error && error.message ? error.message : String(error);
     state.loading = false;
     renderStatus();
+    renderWorkspaceSummary();
     renderQueue();
     renderSourceHealth();
     renderDetail();
@@ -1942,6 +2256,7 @@ export function renderDashboardHtml(): string {
           <button id="copy-button" type="button">Copy digest</button>
         </div>
       </header>
+      <section id="workspace-summary"></section>
       <main>
         <section>
           <h2>Live queue</h2>
