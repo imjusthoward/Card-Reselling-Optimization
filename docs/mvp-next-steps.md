@@ -74,6 +74,20 @@ Do not buy heavier infrastructure until the manual loop proves:
 - the false-positive rate stays acceptable
 - the realized profit is still positive after fees and condition losses
 
+## Future Lanes
+
+These are expansion ideas, not current MVP scope:
+
+- Auto-listing: only after explicit human approval, marketplace policy review, and a proven return path. Treat any eBay or cross-market listing flow as a fulfillment workflow, not a blind bot.
+- Pregrader: build a photo-based grading proxy that scores centering, corners, edges, and surface defects. Use it to support review and pricing, not to replace human judgment.
+- Sentiment: run offline sentiment analysis on public channels to look for likely price runs, then backtest against historical price movement before adding it to live scoring.
+
+Gate each lane on three checks:
+
+- the current live loop is stable
+- the trader can explain why the signal matters
+- the added signal improves realized profit or review speed in backtests
+
 ## Deployed Stack
 
 The current live GCP footprint is:
