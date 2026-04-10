@@ -94,6 +94,15 @@ export interface ProbabilityEstimate {
   sampleSize: number
 }
 
+export interface FeedbackSignalSummary {
+  totalLabels: number
+  sealMissingCount: number
+  sellerRiskCount: number
+  packMismatchCount: number
+  photoRiskCount: number
+  conditionMismatchCount: number
+}
+
 export interface CalibrationBucket {
   authenticity: ProbabilityEstimate
   cleanCondition: ProbabilityEstimate

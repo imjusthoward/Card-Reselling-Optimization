@@ -3,6 +3,7 @@ import {
 } from './calibration.js'
 import {
   type CalibrationProfile,
+  type FeedbackSignalSummary,
   type OpportunityListing,
   type OpportunityScore,
   type Recommendation,
@@ -63,6 +64,57 @@ function computeSellerAdjustment(listing: OpportunityListing): number {
   }
 
   return 0
+}
+
+function computeFeedbackAdjustment(
+  listing: OpportunityListing,
+  feedbackSignals?: FeedbackSignalSummary
+): { authDelta: number; cleanDelta: number; reasons: string[] } {
+  const reasons: string[] = []
+  let authDelta = 0
+  let cleanDelta = 0
+
+  if (!feedbackSignals || feedbackSignals.totalLabels <= 0) {
+    return { authDelta, cleanDelta, reasons }
+  }
+
+  const sealedListing = listing.riskGroup === 'sealed'
+  const missingSellerSignals = listing.sellerSignals?.rating == null && listing.sellerSignals?.salesCount == null
+  const missingPhotoEvidence = (listing.imageEvidence?.photoCount ?? 0) <= 1
+
+  if (sealedListing && feedbackSignals.sealMissingCount > 0) {
+    const penalty = Math.min(0.12, feedbackSignals.sealMissingCount * 0.02)
+    cleanDelta -= penalty
+    addReason(reasons, 'feedback-shrinkless-pattern')
+  }
+
+  if (missingSellerSignals && feedbackSignals.sellerRiskCount > 0) {
+    const penalty = Math.min(0.11, feedbackSignals.sellerRiskCount * 0.02)
+    authDelta -= penalty
+    addReason(reasons, 'feedback-seller-risk')
+  }
+
+  if (sealedListing && feedbackSignals.packMismatchCount > 0) {
+    const penalty = Math.min(0.1, feedbackSignals.packMismatchCount * 0.02)
+    authDelta -= penalty
+    cleanDelta -= penalty * 0.5
+    addReason(reasons, 'feedback-pack-mismatch')
+  }
+
+  if (missingPhotoEvidence && feedbackSignals.photoRiskCount > 0) {
+    const penalty = Math.min(0.08, feedbackSignals.photoRiskCount * 0.015)
+    authDelta -= penalty
+    cleanDelta -= penalty
+    addReason(reasons, 'feedback-photo-risk')
+  }
+
+  if (feedbackSignals.conditionMismatchCount > 0) {
+    const penalty = Math.min(0.08, feedbackSignals.conditionMismatchCount * 0.015)
+    cleanDelta -= penalty
+    addReason(reasons, 'feedback-condition-mismatch')
+  }
+
+  return { authDelta, cleanDelta, reasons }
 }
 
 function imageEvidenceAdjustment(
@@ -132,7 +184,8 @@ function shrinkWrapAdjustment(
 export function scoreOpportunity(
   listing: OpportunityListing,
   calibration: CalibrationProfile,
-  config: Partial<ScoringConfig> = {}
+  config: Partial<ScoringConfig> = {},
+  feedbackSignals?: FeedbackSignalSummary
 ): OpportunityScore {
   const scoringConfig = { ...DEFAULT_SCORING_CONFIG, ...config }
   const bucket = getCalibrationBucket(
@@ -165,6 +218,11 @@ export function scoreOpportunity(
   reasons.push(...shrinkWrap.reasons)
 
   authProbability += computeSellerAdjustment(listing)
+
+  const feedbackAdjustment = computeFeedbackAdjustment(listing, feedbackSignals)
+  authProbability += feedbackAdjustment.authDelta
+  cleanProbability += feedbackAdjustment.cleanDelta
+  reasons.push(...feedbackAdjustment.reasons)
 
   const liquidityScore = clamp(listing.liquidityScore ?? 0.5, 0, 1)
   const conditionConfidence = listing.conditionConfidence
@@ -259,10 +317,11 @@ export function scoreOpportunity(
 export function scoreBatch(
   listings: OpportunityListing[],
   calibration: CalibrationProfile,
-  config: Partial<ScoringConfig> = {}
+  config: Partial<ScoringConfig> = {},
+  feedbackSignals?: FeedbackSignalSummary
 ): OpportunityScore[] {
   return listings
-    .map(listing => scoreOpportunity(listing, calibration, config))
+    .map(listing => scoreOpportunity(listing, calibration, config, feedbackSignals))
     .sort(
       (left, right) =>
         right.priorityScore - left.priorityScore ||

@@ -56,7 +56,7 @@ describe('dashboard html', () => {
         condition: 'uncertain',
         recommendedAction: 'pass',
         reviewedAt: '2026-04-09T10:19:20.893Z',
-        notes: 'Old correction that should be superseded.'
+        notes: 'Same seller, 0 reviews, and a blurry photo should have been flagged earlier.'
       }
     ], {
       generatedAt: '2026-04-09T10:21:00.893Z',
