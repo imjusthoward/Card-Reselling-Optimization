@@ -181,7 +181,7 @@ export function buildFeedbackListHtml(
     `<span class="pill">calibration ${calibrationLabels}</span>`,
     `<span class="pill timestamp">scan ${escapeHtml(latestStamp)}</span>`,
     '</div>',
-    '<strong>Notes and priming</strong>',
+    '<strong>Alex Notes</strong>',
     '<div class="subtle">The latest scan shows whether Alex labels were merged into calibration. For duplicate listing IDs, only the newest correction is used.</div>',
     '</div>',
     '<div class="feedback-summary">',
@@ -191,7 +191,7 @@ export function buildFeedbackListHtml(
     `<span class="pill">condition ${summary.clean}/${summary.damaged}/${summary.uncertainCondition}</span>`,
     `<span class="pill">action ${summary.buy}/${summary.watch}/${summary.pass}</span>`,
     '</div>',
-    '<strong>Calibration feed</strong>',
+    '<strong>Calibration Status</strong>',
     '<div class="subtle">Alex labels are used in the next calibration pass and stay visible here for review.</div>',
     noteThemePills ? `<div class="row" style="margin-top: 10px;">${noteThemePills}</div>` : '',
     '</div>',
@@ -1093,7 +1093,7 @@ function buildFeedbackListHtml(labels, latest) {
     '<span class="pill">calibration ' + String(calibrationLabels) + '</span>',
     '<span class="pill timestamp">scan ' + escapeHtml(latestStamp) + '</span>',
     '</div>',
-    '<strong>Notes and priming</strong>',
+    '<strong>Alex Notes</strong>',
     '<div class="subtle">The latest scan shows whether Alex labels were merged into calibration. For duplicate listing IDs, only the newest correction is used.</div>',
     '</div>',
     '<div class="feedback-summary">',
@@ -1103,7 +1103,7 @@ function buildFeedbackListHtml(labels, latest) {
     '<span class="pill">condition ' + String(summary.clean) + '/' + String(summary.damaged) + '/' + String(summary.uncertainCondition) + '</span>',
     '<span class="pill">action ' + String(summary.buy) + '/' + String(summary.watch) + '/' + String(summary.pass) + '</span>',
     '</div>',
-    '<strong>Calibration feed</strong>',
+    '<strong>Calibration Status</strong>',
     '<div class="subtle">Alex labels are used in the next calibration pass and stay visible here for review.</div>',
     noteThemePills ? '<div class="row" style="margin-top: 10px;">' + noteThemePills + '</div>' : '',
     '</div>',
@@ -1184,7 +1184,7 @@ function renderSourceHealth() {
     '<span class="pill">feedback used ' + String(calibration.used) + '/' + String(calibration.total) + '</span>',
     '<span class="pill">superseded ' + String(calibration.superseded) + '</span>',
     '</div>',
-    '<strong>Coverage snapshot</strong>',
+    '<strong>Calibration Status</strong>',
     '<div class="subtle">slab/graded matches ' + String(slabMatches) + ' • watchlist price-sheet flags ' + String(priceSheetMatches) + ' • shrinkless sealed ' + String(missingShrinkWrap) + '</div>',
     feedbackSignals
       ? '<div class="row" style="margin-top: 10px;">'
@@ -1865,7 +1865,7 @@ export function renderDashboardHtml(): string {
         <section>
           <h2>Selected listing</h2>
           <div id="detail-view"></div>
-          <h2>Feedback history</h2>
+          <h2>Alex Notes</h2>
           <div id="feedback-list"></div>
         </section>
       </main>

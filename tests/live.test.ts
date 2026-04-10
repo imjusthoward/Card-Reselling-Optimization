@@ -110,10 +110,21 @@ const shrinkMissingYahooHtml = `
   </html>
 `
 
-function makeFetch(options: { yahooHtml?: string; snkrdunkHtml?: string; mercariHtml?: string } = {}): typeof fetch {
+function makeFetch(options: {
+  yahooHtml?: string
+  snkrdunkHtml?: string
+  mercariHtml?: string
+  mercariApiJson?: unknown
+  mercariApiStatus?: number
+} = {}): typeof fetch {
   const yahooMarkup = options.yahooHtml ?? yahooHtml
   const snkrMarkup = options.snkrdunkHtml ?? snkrdunkHtml
   const mercariMarkup = options.mercariHtml ?? '<html></html>'
+  const mercariApiJson = options.mercariApiJson ?? {
+    items: [],
+    meta: {}
+  }
+  const mercariApiStatus = options.mercariApiStatus ?? 400
 
   return (async (input: Parameters<typeof fetch>[0]) => {
     const url = typeof input === 'string' ? input : input.toString()
@@ -128,6 +139,15 @@ function makeFetch(options: { yahooHtml?: string; snkrdunkHtml?: string; mercari
 
     if (url.includes('jp.mercari.com')) {
       return new Response(mercariMarkup, { status: 200 })
+    }
+
+    if (url.includes('api.mercari.jp')) {
+      return new Response(JSON.stringify(mercariApiJson), {
+        status: mercariApiStatus,
+        headers: {
+          'content-type': 'application/json'
+        }
+      })
     }
 
     return new Response('<html></html>', { status: 200 })
@@ -415,6 +435,66 @@ describe('live scan', () => {
     expect(result.scrapedListings[0]?.sourceListingId).toBe('m98765')
     expect(result.sourceSummaries[0]?.status).toBe('ok')
     expect(result.sourceSummaries[0]?.note).toContain('embedded JSON fallback')
+  })
+
+  it('uses Mercari API fallback when the public HTML has no cards', async () => {
+    const watchlistPath = await createTempWatchlist([
+      {
+        id: 'mercari-terastal-fes-ex-box',
+        title: 'テラスタルフェスex ボックス',
+        marketplaces: ['mercari'],
+        searchTerms: ['テラスタルフェスex ボックス'],
+        riskGroup: 'sealed',
+        cleanExitJpy: 25000,
+        damagedExitJpy: 21000,
+        exitCostsJpy: 1000,
+        salvageJpy: 15000,
+        liquidityScore: 0.92,
+        active: true
+      }
+    ])
+    const artifactStore = new MemoryArtifactStore()
+    const fetchImpl = makeFetch({
+      mercariHtml: '<html><body><main id="empty"></main></body></html>',
+      mercariApiJson: {
+        items: [
+          {
+            id: 'mapi555',
+            name: 'テラスタルフェスex ボックス',
+            price: 15980,
+            thumbnails: [{ url: 'https://example.com/mercari-api.jpg' }],
+            sellerId: 'seller-123',
+            status: 'ACTIVE'
+          }
+        ],
+        meta: {
+          nextPageToken: ''
+        }
+      },
+      mercariApiStatus: 200
+    })
+
+    const result = await runLiveScan({
+      watchlistPath,
+      labelsPath: 'data/sample-labels.json',
+      configPath: 'data/scoring-config.json',
+      watchlistLimit: 1,
+      queryStrategy: 'primary',
+      sourceFilter: ['mercari'],
+      limitPerQuery: 5,
+      searchConcurrency: 1,
+      fetchTimeoutMs: 2000,
+      maxNotifications: 5,
+      maxReviews: 5,
+      artifactStore,
+      fetchImpl,
+      notifyAlex: false
+    })
+
+    expect(result.scrapedListings).toHaveLength(1)
+    expect(result.scrapedListings[0]?.sourceListingId).toBe('mapi555')
+    expect(result.sourceSummaries[0]?.status).toBe('ok')
+    expect(result.sourceSummaries[0]?.note).toContain('Mercari search API fallback used')
   })
 
   it('lets the newest Alex label supersede earlier feedback on the same listing', async () => {

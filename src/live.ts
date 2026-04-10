@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto'
+import { generateKeyPairSync, randomUUID, sign } from 'node:crypto'
 import {
   buildCalibration,
   buildMvpReport,
@@ -895,6 +895,273 @@ function parseMercariEmbeddedSearchPage(
   return listings
 }
 
+const MERCARI_SEARCH_API_URL = 'https://api.mercari.jp/v2/entities:search'
+const MERCARI_SEARCH_USER_AGENT =
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36'
+
+function base64UrlEncode(value: Buffer | string): string {
+  const buffer = typeof value === 'string' ? Buffer.from(value, 'utf8') : value
+  return buffer
+    .toString('base64')
+    .replace(/=/g, '')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+}
+
+function buildMercariDpopHeader(htu: string, htm: string, now = new Date()): string {
+  const { publicKey, privateKey } = generateKeyPairSync('ec', {
+    namedCurve: 'P-256'
+  })
+  const jwk = publicKey.export({ format: 'jwk' }) as Record<string, string>
+  const header = {
+    typ: 'dpop+jwt',
+    alg: 'ES256',
+    jwk: {
+      kty: jwk.kty,
+      crv: jwk.crv,
+      x: jwk.x,
+      y: jwk.y
+    }
+  }
+  const payload = {
+    iat: Math.floor(now.getTime() / 1000),
+    jti: randomUUID(),
+    htu,
+    htm: htm.toUpperCase(),
+    uuid: randomUUID()
+  }
+  const unsigned = `${base64UrlEncode(JSON.stringify(header))}.${base64UrlEncode(
+    JSON.stringify(payload)
+  )}`
+  const signature = sign(null, Buffer.from(unsigned), {
+    key: privateKey,
+    dsaEncoding: 'ieee-p1363'
+  })
+
+  return `${unsigned}.${base64UrlEncode(signature)}`
+}
+
+function firstStringFromArray(value: unknown): string | undefined {
+  if (!Array.isArray(value)) {
+    return undefined
+  }
+
+  for (const entry of value) {
+    if (typeof entry === 'string' && entry.trim()) {
+      return entry.trim()
+    }
+
+    if (entry && typeof entry === 'object') {
+      const nested = firstStringValue(entry as Record<string, unknown>, [
+        'uri',
+        'url',
+        'href',
+        'thumbnailUrl',
+        'imageUrl'
+      ])
+      if (nested) {
+        return nested
+      }
+    }
+  }
+
+  return undefined
+}
+
+function parseMercariApiItem(
+  item: Record<string, unknown>,
+  query: string
+): ScrapedListing | null {
+  const sourceListingId =
+    firstStringValue(item, ['id', 'itemId', 'sourceListingId']) ?? undefined
+  const title =
+    firstStringValue(item, ['name', 'title', 'displayName', 'itemName']) ?? undefined
+  const askingPriceJpy =
+    firstNumberValue(item, ['price', 'itemPrice', 'sellingPrice', 'amount']) ?? undefined
+  const sourceUrl =
+    firstStringValue(item, ['url', 'itemUrl', 'href', 'path', 'sourceUrl']) ?? undefined
+  const sellerId = firstStringValue(item, ['sellerId', 'seller_id']) ?? undefined
+  const imageUrl =
+    firstStringFromArray(item.thumbnails) ??
+    firstStringFromArray(item.photos) ??
+    firstStringValue(item, ['imageUrl', 'thumbnailUrl', 'photoUrl', 'image', 'thumbnail']) ??
+    undefined
+
+  if (!sourceListingId || !title || askingPriceJpy == null || !looksRelevant(title, query)) {
+    return null
+  }
+
+  const notes = [`query:${query}`, 'source:mercari', 'source:mercari-api']
+  const itemConditionId = firstStringValue(item, ['itemConditionId', 'conditionId'])
+  if (itemConditionId) {
+    notes.push(`itemCondition:${itemConditionId}`)
+  }
+
+  const status = firstStringValue(item, ['status'])
+  if (status) {
+    notes.push(`status:${status}`)
+  }
+
+  return {
+    marketplace: 'mercari',
+    sourceUrl:
+      sourceUrl && sourceUrl.startsWith('http')
+        ? sourceUrl
+        : `https://jp.mercari.com/item/${sourceListingId}`,
+    sourceListingId,
+    sourceQuery: query,
+    title,
+    askingPriceJpy,
+    imageUrl,
+    sellerId,
+    notes
+  }
+}
+
+interface MercariSearchApiResponse {
+  items?: unknown[]
+  meta?: {
+    nextPageToken?: string
+    previousPageToken?: string
+    numFound?: string
+  }
+}
+
+async function fetchMercariSearchApi(
+  query: string,
+  fetchImpl: typeof fetch,
+  timeoutMs: number,
+  limit = 20
+): Promise<{ results: ScrapedListing[]; note?: string }> {
+  const results: ScrapedListing[] = []
+  const searchSessionId = randomUUID().replace(/-/g, '')
+  const laplaceDeviceUuid = randomUUID()
+  let pageToken = ''
+  let page = 0
+
+  while (results.length < limit && page < 4) {
+    const pageSize = Math.max(1, Math.min(120, limit - results.length))
+    const body = {
+      userId: '',
+      config: {
+        responseToggles: ['QUERY_SUGGESTION_WEB_1']
+      },
+      pageSize,
+      pageToken,
+      searchSessionId,
+      source: 'BaseSerp',
+      indexRouting: 'INDEX_ROUTING_UNSPECIFIED',
+      thumbnailTypes: [],
+      searchCondition: {
+        keyword: query,
+        excludeKeyword: '',
+        sort: 'SORT_SCORE',
+        order: 'ORDER_DESC',
+        status: [],
+        sizeId: [],
+        categoryId: [],
+        brandId: [],
+        sellerId: [],
+        priceMin: 0,
+        priceMax: 0,
+        itemConditionId: [],
+        shippingPayerId: [],
+        shippingFromArea: [],
+        shippingMethod: [],
+        colorId: [],
+        hasCoupon: false,
+        attributes: [],
+        itemTypes: [],
+        skuIds: [],
+        shopIds: [],
+        excludeShippingMethodIds: []
+      },
+      serviceFrom: 'suruga',
+      withItemBrand: true,
+      withItemSize: false,
+      withItemPromotions: true,
+      withItemSizes: true,
+      withShopname: false,
+      useDynamicAttribute: true,
+      withSuggestedItems: true,
+      withOfferPricePromotion: true,
+      withProductSuggest: true,
+      withParentProducts: false,
+      withProductArticles: true,
+      withSearchConditionId: false,
+      withAuction: true,
+      laplaceDeviceUuid
+    }
+
+    const response = await fetchImpl(MERCARI_SEARCH_API_URL, {
+      method: 'POST',
+      headers: {
+        accept: 'application/json, text/plain, */*',
+        'accept-language': 'ja',
+        'content-type': 'application/json',
+        dpop: buildMercariDpopHeader(MERCARI_SEARCH_API_URL, 'POST'),
+        origin: 'https://jp.mercari.com',
+        referer: 'https://jp.mercari.com/',
+        'user-agent': MERCARI_SEARCH_USER_AGENT,
+        'x-country-code': 'JP',
+        'x-platform': 'web'
+      },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(timeoutMs)
+    })
+
+    if (!response.ok) {
+      const failureBody = await response.text().catch(() => '')
+      return {
+        results,
+        note:
+          results.length > 0
+            ? 'Mercari search API fallback used.'
+            : `Mercari search API failed: ${response.status} ${response.statusText}${
+                failureBody ? ` ${failureBody.slice(0, 160)}` : ''
+              }`
+      }
+    }
+
+    const payload = (await response.json()) as MercariSearchApiResponse
+    const items = Array.isArray(payload.items) ? payload.items : []
+
+    for (const item of items) {
+      if (results.length >= limit) {
+        break
+      }
+
+      if (!item || typeof item !== 'object') {
+        continue
+      }
+
+      const listing = parseMercariApiItem(item as Record<string, unknown>, query)
+      if (listing) {
+        results.push(listing)
+      }
+    }
+
+    const nextPageToken =
+      typeof payload.meta?.nextPageToken === 'string'
+        ? payload.meta.nextPageToken.trim()
+        : ''
+
+    if (!nextPageToken || items.length === 0) {
+      break
+    }
+
+    pageToken = nextPageToken
+    page += 1
+  }
+
+  return {
+    results,
+    note: results.length > 0
+      ? 'Mercari search API fallback used.'
+      : 'Mercari search API returned no results.'
+  }
+}
+
 function parseMercariSearchPageDetailed(
   html: string,
   query: string,
@@ -943,16 +1210,47 @@ async function scrapeMarketplaceSearch(
   limit = 20
 ): Promise<{ results: ScrapedListing[]; note?: string }> {
   const url = buildSearchUrl(marketplace, query)
-  const html = await fetchHtml(url, fetchImpl, timeoutMs)
   if (marketplace === 'mercari') {
-    const mercariResults = parseMercariSearchPageDetailed(html, query, limit)
-    if (mercariResults.results.length > 0) {
-      return mercariResults
+    let html = ''
+    let htmlNote: string | undefined
+
+    try {
+      html = await fetchHtml(url, fetchImpl, timeoutMs)
+    } catch (error) {
+      htmlNote = `Mercari HTML fetch failed: ${(error as Error).message}`
     }
 
-    return mercariResults
+    if (html) {
+      const mercariResults = parseMercariSearchPageDetailed(html, query, limit)
+      if (mercariResults.results.length > 0) {
+        return mercariResults
+      }
+
+      htmlNote = htmlNote ?? mercariResults.note
+    }
+
+    try {
+      const mercariApiResults = await fetchMercariSearchApi(query, fetchImpl, timeoutMs, limit)
+      if (mercariApiResults.results.length > 0) {
+        return {
+          results: mercariApiResults.results,
+          note: mercariApiResults.note ?? htmlNote
+        }
+      }
+
+      return {
+        results: mercariApiResults.results,
+        note: mercariApiResults.note ?? htmlNote
+      }
+    } catch (error) {
+      return {
+        results: [],
+        note: htmlNote ?? `Mercari API fallback failed: ${(error as Error).message}`
+      }
+    }
   }
 
+  const html = await fetchHtml(url, fetchImpl, timeoutMs)
   const results = parseMarketplaceSearchPage(marketplace, html, query, limit)
 
   return {
@@ -1407,7 +1705,8 @@ export async function runLiveScan(
         'error' in result && result.error
           ? 'error'
           : result.note != null && result.results.length === 0
-          ? result.task.marketplace === 'mercari' && result.note.includes('browser-backed')
+          ? result.task.marketplace === 'mercari' &&
+            /browser-backed|HTML fetch failed|API fallback failed|search API failed/i.test(result.note)
             ? 'unsupported'
             : 'empty'
           : 'ok'
