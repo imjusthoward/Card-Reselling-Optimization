@@ -79,15 +79,111 @@ function summarizeFeedback(labels: FeedbackEntry[]) {
   return summary
 }
 
-export function buildFeedbackListHtml(labels: FeedbackEntry[]): string {
+const NOTE_THEME_MARKERS = {
+  sealMissing: ['シュリンクなし', 'シュリンク無し', 'not factory sealed', 'factory seal missing', 'not sealed', 'open box', 'opened box', 'loose packs'],
+  sellerRisk: ['same seller', '0 reviews', 'no reviews', 'unconfirmed identity', 'identity not confirmed', 'seller risk', 'blurry photo', 'photo is blurry'],
+  packMismatch: ['loose packs', '30 loose packs', 'box mismatch', 'description says', 'packs only'],
+  photoRisk: ['blurry photo', 'photo is blurry', 'thin photo set', 'single photo', 'unclear photo'],
+  conditionMismatch: ['condition mismatch', 'd condition', 'damaged', 'crease', 'dent', 'corner damage']
+} as const
+
+function summarizeFeedbackNotes(labels: FeedbackEntry[]) {
+  const summary = {
+    sealMissing: 0,
+    sellerRisk: 0,
+    packMismatch: 0,
+    photoRisk: 0,
+    conditionMismatch: 0
+  }
+
+  labels.forEach(entry => {
+    const note = String(entry?.notes || entry?.followUp || '')
+      .normalize('NFKC')
+      .toLowerCase()
+      .replace(/[\s\p{P}\p{S}]+/gu, '')
+
+    if (!note) {
+      return
+    }
+
+    const has = (markers: readonly string[]) =>
+      markers.some(marker =>
+        note.includes(
+          String(marker)
+            .normalize('NFKC')
+            .toLowerCase()
+            .replace(/[\s\p{P}\p{S}]+/gu, '')
+        )
+      )
+
+    if (has(NOTE_THEME_MARKERS.sealMissing)) summary.sealMissing += 1
+    if (has(NOTE_THEME_MARKERS.sellerRisk)) summary.sellerRisk += 1
+    if (has(NOTE_THEME_MARKERS.packMismatch)) summary.packMismatch += 1
+    if (has(NOTE_THEME_MARKERS.photoRisk)) summary.photoRisk += 1
+    if (has(NOTE_THEME_MARKERS.conditionMismatch)) summary.conditionMismatch += 1
+  })
+
+  return summary
+}
+
+function summarizeCalibrationFeedback(labels: FeedbackEntry[]) {
+  const firstIndexByListingId = new Map<string, number>()
+
+  labels.forEach((entry, index) => {
+    const listingId = String(entry?.listingId || '').trim()
+    if (!listingId || firstIndexByListingId.has(listingId)) {
+      return
+    }
+
+    firstIndexByListingId.set(listingId, index)
+  })
+
+  return {
+    total: labels.length,
+    unique: firstIndexByListingId.size,
+    used: firstIndexByListingId.size,
+    superseded: Math.max(0, labels.length - firstIndexByListingId.size),
+    firstIndexByListingId
+  }
+}
+
+export function buildFeedbackListHtml(
+  labels: FeedbackEntry[],
+  latest?: { generatedAt?: string; report?: { labels?: { totalLabels?: number } } } | null
+): string {
   if (!labels.length) {
     return '<div class="empty"><strong>No labeled feedback yet.</strong><div class="subtle">Alex can add the first review after the initial live queue loads.</div></div>'
   }
 
   const summary = summarizeFeedback(labels)
+  const calibration = summarizeCalibrationFeedback(labels)
+  const latestStamp = latest?.generatedAt ? formatClock(latest.generatedAt) : 'unknown'
+  const calibrationLabels = latest?.report?.labels
+    ? Number(latest.report.labels.totalLabels || 0)
+    : 0
+  const primingState = calibrationLabels > 0 ? 'active' : calibration.total > 0 ? 'warming' : 'idle'
   const summaryCountText = `${summary.total} labels`
+  const noteThemes = summarizeFeedbackNotes(labels)
+  const noteThemePills = [
+    noteThemes.sealMissing ? `<span class="pill">seal risk ${noteThemes.sealMissing}</span>` : '',
+    noteThemes.sellerRisk ? `<span class="pill">seller risk ${noteThemes.sellerRisk}</span>` : '',
+    noteThemes.packMismatch ? `<span class="pill">pack mismatch ${noteThemes.packMismatch}</span>` : '',
+    noteThemes.photoRisk ? `<span class="pill">photo risk ${noteThemes.photoRisk}</span>` : '',
+    noteThemes.conditionMismatch ? `<span class="pill">condition mismatch ${noteThemes.conditionMismatch}</span>` : ''
+  ].filter(Boolean).join('')
 
   return [
+    '<div class="priming-summary">',
+    '<div class="meta">',
+    `<span class="pill ${primingState === 'active' ? 'buy' : 'review'}">priming ${primingState}</span>`,
+    `<span class="pill">used ${calibration.used}/${calibration.total}</span>`,
+    `<span class="pill">superseded ${calibration.superseded}</span>`,
+    `<span class="pill">calibration ${calibrationLabels}</span>`,
+    `<span class="pill timestamp">scan ${escapeHtml(latestStamp)}</span>`,
+    '</div>',
+    '<strong>Notes and priming</strong>',
+    '<div class="subtle">The latest scan shows whether Alex labels were merged into calibration. For duplicate listing IDs, only the newest correction is used.</div>',
+    '</div>',
     '<div class="feedback-summary">',
     '<div class="meta">',
     `<span class="pill">feedback ${summaryCountText}</span>`,
@@ -97,23 +193,32 @@ export function buildFeedbackListHtml(labels: FeedbackEntry[]): string {
     '</div>',
     '<strong>Calibration feed</strong>',
     '<div class="subtle">Alex labels are used in the next calibration pass and stay visible here for review.</div>',
+    noteThemePills ? `<div class="row" style="margin-top: 10px;">${noteThemePills}</div>` : '',
     '</div>',
-    labels.map(entry => {
+    labels.map((entry, index) => {
+      const listingId = String(entry.listingId || '').trim()
+      const usedInCalibration =
+        listingId.length > 0 && calibration.firstIndexByListingId.get(listingId) === index
       const reviewedAt = entry.reviewedAt ? formatClock(entry.reviewedAt) : 'n/a'
       const note = entry.notes || entry.followUp || 'No notes provided.'
       const sourceQuery = entry.sourceQuery || 'no query'
       const sourceListingId = entry.sourceListingId || 'n/a'
+      const statusText = usedInCalibration ? 'used in calibration' : 'superseded'
 
       return [
-        '<div class="card feedback-row">',
+        '<div class="card feedback-row ' + (usedInCalibration ? 'used' : 'superseded') + '">',
         '<div class="meta">',
         `<span class="pill">${escapeHtml(entry.authenticity || 'uncertain')}</span>`,
         `<span class="pill">${escapeHtml(entry.condition || 'uncertain')}</span>`,
         `<span class="pill">${escapeHtml(entry.recommendedAction || 'watch')}</span>`,
+        `<span class="pill ${usedInCalibration ? 'buy' : 'review'}">${escapeHtml(statusText)}</span>`,
         `<span class="pill timestamp">${escapeHtml(reviewedAt)}</span>`,
         '</div>',
         `<div class="title" style="font-size: 0.95rem; margin-top: 4px;">${escapeHtml(entry.listingId || 'unknown listing')}</div>`,
-        `<div class="subtle">${escapeHtml(note)}</div>`,
+        '<div class="feedback-note">',
+        '<div class="subtle">Full note</div>',
+        `<div>${escapeHtml(note)}</div>`,
+        '</div>',
         '<div class="row">',
         `<span class="pill">${escapeHtml(entry.marketplace || 'other')}</span>`,
         `<span class="pill">${escapeHtml(entry.riskGroup || 'raw')}</span>`,
@@ -542,13 +647,43 @@ textarea { min-height: 96px; resize: vertical; }
   margin-top: 8px;
 }
 
+.priming-summary {
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--line);
+  background: rgba(23, 93, 67, 0.06);
+}
+
+.priming-summary .row {
+  margin-top: 8px;
+}
+
 .feedback-row {
   display: grid;
   gap: 8px;
 }
 
+.feedback-row.used {
+  border-left: 4px solid var(--buy);
+}
+
+.feedback-row.superseded {
+  border-left: 4px solid var(--review);
+  opacity: 0.88;
+}
+
 .feedback-row .subtle {
   line-height: 1.4;
+}
+
+.feedback-note {
+  padding: 10px 12px;
+  border: 1px solid rgba(23, 93, 67, 0.16);
+  border-radius: 12px;
+  background: rgba(23, 93, 67, 0.06);
+}
+
+.feedback-note .subtle {
+  margin-bottom: 4px;
 }
 
 .empty {
@@ -863,15 +998,104 @@ function summarizeFeedback(labels) {
   return summary;
 }
 
-function buildFeedbackListHtml(labels) {
+var NOTE_THEME_MARKERS = {
+  sealMissing: ['シュリンクなし', 'シュリンク無し', 'not factory sealed', 'factory seal missing', 'not sealed', 'open box', 'opened box', 'loose packs'],
+  sellerRisk: ['same seller', '0 reviews', 'no reviews', 'unconfirmed identity', 'identity not confirmed', 'seller risk', 'blurry photo', 'photo is blurry'],
+  packMismatch: ['loose packs', '30 loose packs', 'box mismatch', 'description says', 'packs only'],
+  photoRisk: ['blurry photo', 'photo is blurry', 'thin photo set', 'single photo', 'unclear photo'],
+  conditionMismatch: ['condition mismatch', 'd condition', 'damaged', 'crease', 'dent', 'corner damage']
+};
+
+function summarizeFeedbackNotes(labels) {
+  var summary = {
+    sealMissing: 0,
+    sellerRisk: 0,
+    packMismatch: 0,
+    photoRisk: 0,
+    conditionMismatch: 0
+  };
+
+  labels.forEach(function (entry) {
+    var note = String(entry && (entry.notes || entry.followUp) ? (entry.notes || entry.followUp) : '')
+      .normalize('NFKC')
+      .toLowerCase()
+      .replace(/[\s\p{P}\p{S}]+/gu, '');
+
+    if (!note) {
+      return;
+    }
+
+    var has = function (markers) {
+      return markers.some(function (marker) {
+        return note.includes(String(marker).normalize('NFKC').toLowerCase().replace(/[\s\p{P}\p{S}]+/gu, ''));
+      });
+    };
+
+    if (has(NOTE_THEME_MARKERS.sealMissing)) { summary.sealMissing += 1; }
+    if (has(NOTE_THEME_MARKERS.sellerRisk)) { summary.sellerRisk += 1; }
+    if (has(NOTE_THEME_MARKERS.packMismatch)) { summary.packMismatch += 1; }
+    if (has(NOTE_THEME_MARKERS.photoRisk)) { summary.photoRisk += 1; }
+    if (has(NOTE_THEME_MARKERS.conditionMismatch)) { summary.conditionMismatch += 1; }
+  });
+
+  return summary;
+}
+
+function summarizeCalibrationFeedback(labels) {
+  var firstIndexByListingId = new Map();
+
+  labels.forEach(function (entry, index) {
+    var listingId = String(entry && entry.listingId ? entry.listingId : '').trim();
+    if (!listingId || firstIndexByListingId.has(listingId)) {
+      return;
+    }
+
+    firstIndexByListingId.set(listingId, index);
+  });
+
+  return {
+    total: labels.length,
+    unique: firstIndexByListingId.size,
+    used: firstIndexByListingId.size,
+    superseded: Math.max(0, labels.length - firstIndexByListingId.size),
+    firstIndexByListingId: firstIndexByListingId
+  };
+}
+
+function buildFeedbackListHtml(labels, latest) {
   if (!labels.length) {
     return '<div class="empty"><strong>No labeled feedback yet.</strong><div class="subtle">Alex can add the first review after the initial live queue loads.</div></div>';
   }
 
   var summary = summarizeFeedback(labels);
+  var calibration = summarizeCalibrationFeedback(labels);
+  var latestStamp = latest && latest.generatedAt ? formatClock(latest.generatedAt) : 'unknown';
+  var calibrationLabels = latest && latest.report && latest.report.labels
+    ? Number(latest.report.labels.totalLabels || 0)
+    : 0;
+  var primingState = calibrationLabels > 0 ? 'active' : calibration.total > 0 ? 'warming' : 'idle';
   var summaryCountText = String(summary.total) + ' labels';
+  var noteThemes = summarizeFeedbackNotes(labels);
+  var noteThemePills = [
+    noteThemes.sealMissing ? '<span class="pill">seal risk ' + String(noteThemes.sealMissing) + '</span>' : '',
+    noteThemes.sellerRisk ? '<span class="pill">seller risk ' + String(noteThemes.sellerRisk) + '</span>' : '',
+    noteThemes.packMismatch ? '<span class="pill">pack mismatch ' + String(noteThemes.packMismatch) + '</span>' : '',
+    noteThemes.photoRisk ? '<span class="pill">photo risk ' + String(noteThemes.photoRisk) + '</span>' : '',
+    noteThemes.conditionMismatch ? '<span class="pill">condition mismatch ' + String(noteThemes.conditionMismatch) + '</span>' : ''
+  ].filter(Boolean).join('');
 
   return [
+    '<div class="priming-summary">',
+    '<div class="meta">',
+    '<span class="pill ' + (primingState === 'active' ? 'buy' : 'review') + '">priming ' + primingState + '</span>',
+    '<span class="pill">used ' + String(calibration.used) + '/' + String(calibration.total) + '</span>',
+    '<span class="pill">superseded ' + String(calibration.superseded) + '</span>',
+    '<span class="pill">calibration ' + String(calibrationLabels) + '</span>',
+    '<span class="pill timestamp">scan ' + escapeHtml(latestStamp) + '</span>',
+    '</div>',
+    '<strong>Notes and priming</strong>',
+    '<div class="subtle">The latest scan shows whether Alex labels were merged into calibration. For duplicate listing IDs, only the newest correction is used.</div>',
+    '</div>',
     '<div class="feedback-summary">',
     '<div class="meta">',
     '<span class="pill">feedback ' + summaryCountText + '</span>',
@@ -881,22 +1105,29 @@ function buildFeedbackListHtml(labels) {
     '</div>',
     '<strong>Calibration feed</strong>',
     '<div class="subtle">Alex labels are used in the next calibration pass and stay visible here for review.</div>',
+    noteThemePills ? '<div class="row" style="margin-top: 10px;">' + noteThemePills + '</div>' : '',
     '</div>',
-    labels.map(function (entry) {
+    labels.map(function (entry, index) {
+      var listingId = String(entry && entry.listingId ? entry.listingId : '').trim();
+      var usedInCalibration = listingId.length > 0 && calibration.firstIndexByListingId.get(listingId) === index;
       var reviewedAt = entry.reviewedAt ? formatClock(entry.reviewedAt) : 'n/a';
       var note = entry.notes || entry.followUp || 'No notes provided.';
       var sourceQuery = entry.sourceQuery || 'no query';
       var sourceListingId = entry.sourceListingId || 'n/a';
       return [
-        '<div class="card feedback-row">',
+        '<div class="card feedback-row ' + (usedInCalibration ? 'used' : 'superseded') + '">',
         '<div class="meta">',
         '<span class="pill">' + escapeHtml(entry.authenticity || 'uncertain') + '</span>',
         '<span class="pill">' + escapeHtml(entry.condition || 'uncertain') + '</span>',
         '<span class="pill">' + escapeHtml(entry.recommendedAction || 'watch') + '</span>',
+        '<span class="pill ' + (usedInCalibration ? 'buy' : 'review') + '">' + (usedInCalibration ? 'used in calibration' : 'superseded') + '</span>',
         '<span class="pill timestamp">' + escapeHtml(reviewedAt) + '</span>',
         '</div>',
         '<div class="title" style="font-size: 0.95rem; margin-top: 4px;">' + escapeHtml(entry.listingId || 'unknown listing') + '</div>',
-        '<div class="subtle">' + escapeHtml(note) + '</div>',
+        '<div class="feedback-note">',
+        '<div class="subtle">Full note</div>',
+        '<div>' + escapeHtml(note) + '</div>',
+        '</div>',
         '<div class="row">',
         '<span class="pill">' + escapeHtml(entry.marketplace || 'other') + '</span>',
         '<span class="pill">' + escapeHtml(entry.riskGroup || 'raw') + '</span>',
@@ -922,6 +1153,8 @@ function renderSourceHealth() {
 
   var sourceSummaries = Array.isArray(latest.sourceSummaries) ? latest.sourceSummaries : [];
   var opportunities = Array.isArray(latest.opportunities) ? latest.opportunities : [];
+  var calibration = summarizeCalibrationFeedback(state.feedback);
+  var feedbackSignals = latest.feedbackSignals || null;
   var riskGroups = summarizeRiskGroups(opportunities);
   var calibrationLabels = latest.report && latest.report.labels
     ? Number(latest.report.labels.totalLabels || 0)
@@ -943,14 +1176,26 @@ function renderSourceHealth() {
     '<div class="meta">',
     '<span class="pill">scan ' + escapeHtml(latest.scanId ? latest.scanId.slice(0, 8) : 'n/a') + '</span>',
     '<span class="pill timestamp">at ' + escapeHtml(latestStamp) + '</span>',
+    '<span class="pill ' + (calibrationLabels > 0 ? 'buy' : 'review') + '">priming ' + (calibrationLabels > 0 ? 'active' : 'idle') + '</span>',
     '<span class="pill">raw ' + String(riskGroups.raw) + '</span>',
     '<span class="pill">slab ' + String(riskGroups.slab) + '</span>',
     '<span class="pill">sealed ' + String(riskGroups.sealed) + '</span>',
     '<span class="pill">labels ' + String(calibrationLabels) + '</span>',
+    '<span class="pill">feedback used ' + String(calibration.used) + '/' + String(calibration.total) + '</span>',
+    '<span class="pill">superseded ' + String(calibration.superseded) + '</span>',
     '</div>',
     '<strong>Coverage snapshot</strong>',
     '<div class="subtle">slab/graded matches ' + String(slabMatches) + ' • watchlist price-sheet flags ' + String(priceSheetMatches) + ' • shrinkless sealed ' + String(missingShrinkWrap) + '</div>',
-    '<div class="subtle">Alex feedback is merged into calibration on the next scan.</div>',
+    feedbackSignals
+      ? '<div class="row" style="margin-top: 10px;">'
+        + (feedbackSignals.sealMissingCount ? '<span class="pill">seal risk ' + String(feedbackSignals.sealMissingCount) + '</span>' : '')
+        + (feedbackSignals.sellerRiskCount ? '<span class="pill">seller risk ' + String(feedbackSignals.sellerRiskCount) + '</span>' : '')
+        + (feedbackSignals.packMismatchCount ? '<span class="pill">pack mismatch ' + String(feedbackSignals.packMismatchCount) + '</span>' : '')
+        + (feedbackSignals.photoRiskCount ? '<span class="pill">photo risk ' + String(feedbackSignals.photoRiskCount) + '</span>' : '')
+        + (feedbackSignals.conditionMismatchCount ? '<span class="pill">condition mismatch ' + String(feedbackSignals.conditionMismatchCount) + '</span>' : '')
+        + '</div>'
+      : '',
+    '<div class="subtle">Alex feedback is merged into calibration on the next scan. Newer corrections supersede older duplicates on the same listing.</div>',
     '</div>',
     '</div>'
   ];
@@ -1169,7 +1414,7 @@ function renderQueue() {
 }
 
 function renderFeedbackList() {
-  nodes.feedback.innerHTML = buildFeedbackListHtml(state.feedback);
+  nodes.feedback.innerHTML = buildFeedbackListHtml(state.feedback, state.latest);
 }
 
 function resolveSelectedIdAfterRefresh(currentSelectedId, items, preserveDetail) {

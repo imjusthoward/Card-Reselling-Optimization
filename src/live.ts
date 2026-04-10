@@ -16,6 +16,7 @@ import {
   type ScrapedListing,
   type ShrinkWrapState,
   type ScoringConfig,
+  type FeedbackSignalSummary,
   type TraderLabel,
   type WatchlistEntry
 } from './index.js'
@@ -72,6 +73,7 @@ export interface LiveScanOptions {
 export interface LiveScanResult {
   scanId: string
   generatedAt: string
+  feedbackSignals?: FeedbackSignalSummary
   watchlist: WatchlistEntry[]
   sourceSummaries: LiveSourceSummary[]
   scrapedListings: ScrapedListing[]
@@ -186,6 +188,97 @@ function inferShrinkWrapState(title: string): ShrinkWrapState | undefined {
   }
 
   return undefined
+}
+
+const FEEDBACK_SIGNAL_MARKERS = {
+  sealMissing: [
+    'シュリンクなし',
+    'シュリンク無し',
+    'not factory sealed',
+    'factory seal missing',
+    'not sealed',
+    'open box',
+    'opened box',
+    'loose packs'
+  ],
+  sellerRisk: [
+    'same seller',
+    '0 reviews',
+    'no reviews',
+    'unconfirmed identity',
+    'identity not confirmed',
+    'seller risk',
+    'blurry photo',
+    'photo is blurry'
+  ],
+  packMismatch: [
+    'loose packs',
+    '30 loose packs',
+    'box mismatch',
+    'description says',
+    'packs only'
+  ],
+  photoRisk: [
+    'blurry photo',
+    'photo is blurry',
+    'thin photo set',
+    'single photo',
+    'unclear photo'
+  ],
+  conditionMismatch: [
+    'condition mismatch',
+    'd condition',
+    'damaged',
+    'crease',
+    'dent',
+    'corner damage'
+  ]
+} as const
+
+function collectFeedbackSignalSummary(labels: FeedbackEntry[]): FeedbackSignalSummary {
+  const summary: FeedbackSignalSummary = {
+    totalLabels: 0,
+    sealMissingCount: 0,
+    sellerRiskCount: 0,
+    packMismatchCount: 0,
+    photoRiskCount: 0,
+    conditionMismatchCount: 0
+  }
+
+  labels.forEach(label => {
+    if (!label) {
+      return
+    }
+
+    summary.totalLabels += 1
+    const text = normalizeText([label.notes, label.followUp].filter(Boolean).join(' '))
+
+    if (!text) {
+      return
+    }
+
+    if (hasMarker(text, FEEDBACK_SIGNAL_MARKERS.sealMissing)) {
+      summary.sealMissingCount += 1
+    }
+
+    if (hasMarker(text, FEEDBACK_SIGNAL_MARKERS.sellerRisk)) {
+      summary.sellerRiskCount += 1
+    }
+
+    if (hasMarker(text, FEEDBACK_SIGNAL_MARKERS.packMismatch)) {
+      summary.packMismatchCount += 1
+    }
+
+    if (hasMarker(text, FEEDBACK_SIGNAL_MARKERS.photoRisk)) {
+      summary.photoRiskCount += 1
+    }
+
+    if (hasMarker(text, FEEDBACK_SIGNAL_MARKERS.conditionMismatch)) {
+      summary.conditionMismatchCount += 1
+    }
+  })
+
+  return summary
 }
 
 function decodeHtmlEntities(value: string): string {
@@ -539,42 +632,68 @@ function parseSnkrdunkSearchPage(
   return listings
 }
 
-function parseMercariSearchPage(
+function parseMercariCardFromHtml(
+  body: string,
+  sourceListingId: string,
+  query: string
+): ScrapedListing | null {
+  const titleMatch =
+    body.match(/(?:aria-label|alt|title)="(?<title>[^"]+)"/) ??
+    body.match(/<img[^>]*alt="(?<title>[^"]+)"/) ??
+    body.match(/<span[^>]*>(?<title>[^<]{8,}?)<\/span>/)
+  const imageMatch =
+    body.match(/<img[^>]*src="(?<src>[^"]+)"/) ??
+    body.match(/<img[^>]*data-src="(?<src>[^"]+)"/)
+  const priceMatch =
+    body.match(/(?<price>[\d,]+)<!-- -->円/) ??
+    body.match(/(?:¥|￥)(?<price>[\d,]+)/) ??
+    body.match(/(?<price>[\d,]+)\s*円/)
+
+  if (!titleMatch || !priceMatch) {
+    return null
+  }
+
+  const title = decodeHtmlEntities(titleMatch.groups?.title ?? titleMatch[1] ?? '').trim()
+  const askingPriceJpy = parseCurrency(priceMatch.groups?.price ?? priceMatch[1] ?? '0')
+
+  if (!title || !askingPriceJpy || !looksRelevant(title, query)) {
+    return null
+  }
+
+  return {
+    marketplace: 'mercari',
+    sourceUrl: `https://jp.mercari.com/item/${sourceListingId}`,
+    sourceListingId,
+    sourceQuery: query,
+    title,
+    askingPriceJpy,
+    imageUrl: imageMatch?.groups?.src ?? imageMatch?.[1],
+    notes: [`query:${query}`, 'source:mercari']
+  }
+}
+
+function parseMercariAnchorSearchPage(
   html: string,
   query: string,
   limit = 20
 ): ScrapedListing[] {
   const listings: ScrapedListing[] = []
-  const anchorPattern = /<a\b[^>]*href="\/item\/(?<id>[^"]+)"[^>]*>(?<body>[\s\S]*?)<\/a>/g
+  const anchorPattern = /<a\b[^>]*href="(?<href>(?:https?:\/\/jp\.mercari\.com)?\/item\/(?<id>[^"]+))"[^>]*>(?<body>[\s\S]*?)<\/a>/g
 
   for (const match of html.matchAll(anchorPattern)) {
-    const sourceListingId = match.groups?.id
+    const sourceListingId = decodeURIComponent(match.groups?.id ?? '')
     const body = match.groups?.body ?? ''
-    const titleMatch = body.match(/<img[^>]*alt="(?<title>[^"]+)"/)
-    const imageMatch = body.match(/<img[^>]*src="(?<src>[^"]+)"/)
-    const priceMatch = body.match(/(?<price>[\d,]+)<!-- -->円/)
 
-    if (!sourceListingId || !titleMatch || !priceMatch) {
+    if (!sourceListingId) {
       continue
     }
 
-    const title = decodeHtmlEntities(titleMatch.groups?.title ?? titleMatch[1] ?? '')
-    const askingPriceJpy = parseCurrency(priceMatch.groups?.price ?? priceMatch[1] ?? '0')
-
-    if (!looksRelevant(title, query)) {
+    const listing = parseMercariCardFromHtml(body, sourceListingId, query)
+    if (!listing) {
       continue
     }
 
-    listings.push({
-      marketplace: 'mercari',
-      sourceUrl: `https://jp.mercari.com/item/${sourceListingId}`,
-      sourceListingId,
-      sourceQuery: query,
-      title,
-      askingPriceJpy,
-      imageUrl: imageMatch?.groups?.src ?? imageMatch?.[1],
-      notes: [`query:${query}`, 'source:mercari']
-    })
+    listings.push(listing)
 
     if (listings.length >= limit) {
       break
@@ -582,6 +701,238 @@ function parseMercariSearchPage(
   }
 
   return listings
+}
+
+function parseMercariSelectorSearchPage(
+  html: string,
+  query: string,
+  limit = 20
+): ScrapedListing[] {
+  const listings: ScrapedListing[] = []
+  const cardPattern = /<[^>]*data-testid="[^"]*(?:item|listing)[^"]*"[^>]*>(?<body>[\s\S]*?)<\/[^>]+>/g
+
+  for (const match of html.matchAll(cardPattern)) {
+    const body = match.groups?.body ?? ''
+    const hrefMatch = body.match(/href="(?<href>(?:https?:\/\/jp\.mercari\.com)?\/item\/(?<id>[^"]+))"/)
+    const sourceListingId = decodeURIComponent(hrefMatch?.groups?.id ?? '')
+
+    if (!sourceListingId) {
+      continue
+    }
+
+    const listing = parseMercariCardFromHtml(body, sourceListingId, query)
+    if (!listing) {
+      continue
+    }
+
+    listings.push(listing)
+
+    if (listings.length >= limit) {
+      break
+    }
+  }
+
+  return listings
+}
+
+function firstStringValue(
+  value: Record<string, unknown>,
+  keys: string[]
+): string | undefined {
+  for (const key of keys) {
+    const candidate = value[key]
+    if (typeof candidate === 'string' && candidate.trim()) {
+      return candidate.trim()
+    }
+  }
+
+  return undefined
+}
+
+function firstNumberValue(
+  value: Record<string, unknown>,
+  keys: string[]
+): number | undefined {
+  for (const key of keys) {
+    const candidate = value[key]
+    if (typeof candidate === 'number' && Number.isFinite(candidate)) {
+      return candidate
+    }
+
+    if (typeof candidate === 'string') {
+      const parsed = Number(candidate.replace(/[^\d.]/g, ''))
+      if (Number.isFinite(parsed) && parsed > 0) {
+        return parsed
+      }
+    }
+  }
+
+  return undefined
+}
+
+function toMercariListingFromObject(
+  object: Record<string, unknown>,
+  query: string
+): ScrapedListing | null {
+  const sourceListingId =
+    firstStringValue(object, ['sourceListingId', 'source_listing_id', 'itemId', 'item_id', 'id']) ??
+    undefined
+  const title =
+    firstStringValue(object, ['title', 'name', 'itemName', 'displayName', 'item_title']) ??
+    undefined
+  const askingPriceJpy =
+    firstNumberValue(object, ['askingPriceJpy', 'price', 'itemPrice', 'sellingPrice', 'amount'])
+  const sourceUrl =
+    firstStringValue(object, ['sourceUrl', 'itemUrl', 'url', 'href', 'path']) ?? undefined
+  const imageUrl =
+    firstStringValue(object, ['imageUrl', 'thumbnailUrl', 'photoUrl', 'image', 'thumbnail']) ??
+    undefined
+
+  if (!sourceListingId || !title || askingPriceJpy == null) {
+    return null
+  }
+
+  if (!looksRelevant(title, query)) {
+    return null
+  }
+
+  return {
+    marketplace: 'mercari',
+    sourceUrl:
+      sourceUrl && sourceUrl.startsWith('http')
+        ? sourceUrl
+        : `https://jp.mercari.com/item/${sourceListingId}`,
+    sourceListingId,
+    sourceQuery: query,
+    title,
+    askingPriceJpy,
+    imageUrl,
+    notes: [`query:${query}`, 'source:mercari']
+  }
+}
+
+function traverseMercariJson(
+  value: unknown,
+  query: string,
+  listings: ScrapedListing[],
+  seen: Set<unknown>,
+  limit: number
+): void {
+  if (listings.length >= limit) {
+    return
+  }
+
+  if (!value || typeof value !== 'object' || seen.has(value)) {
+    return
+  }
+
+  seen.add(value)
+
+  if (Array.isArray(value)) {
+    for (const entry of value) {
+      traverseMercariJson(entry, query, listings, seen, limit)
+      if (listings.length >= limit) {
+        return
+      }
+    }
+    return
+  }
+
+  const object = value as Record<string, unknown>
+  const listing = toMercariListingFromObject(object, query)
+  if (listing) {
+    listings.push(listing)
+  }
+
+  for (const child of Object.values(object)) {
+    traverseMercariJson(child, query, listings, seen, limit)
+    if (listings.length >= limit) {
+      return
+    }
+  }
+}
+
+function parseMercariEmbeddedSearchPage(
+  html: string,
+  query: string,
+  limit = 20
+): ScrapedListing[] {
+  const listings: ScrapedListing[] = []
+  const scripts = [...html.matchAll(/<script\b[^>]*>(?<body>[\s\S]*?)<\/script>/g)]
+
+  for (const match of scripts) {
+    const script = decodeHtmlEntities(match.groups?.body ?? '').trim()
+
+    if (!script) {
+      continue
+    }
+
+    const candidatePayloads: string[] = []
+
+    if (script.startsWith('{') || script.startsWith('[')) {
+      candidatePayloads.push(script)
+    }
+
+    const nextDataMatch = script.match(/(?:window\.__NEXT_DATA__|self\.__next_f\.push\([^)]*\))\s*=\s*(?<json>\{[\s\S]*\}|\[[\s\S]*\])/)
+    if (nextDataMatch?.groups?.json) {
+      candidatePayloads.push(nextDataMatch.groups.json)
+    }
+
+    for (const payload of candidatePayloads) {
+      try {
+        const parsed = JSON.parse(payload)
+        traverseMercariJson(parsed, query, listings, new Set<unknown>(), limit)
+      } catch (_error) {
+        // Ignore malformed script payloads and keep trying the remaining shapes.
+      }
+
+      if (listings.length >= limit) {
+        return listings
+      }
+    }
+  }
+
+  return listings
+}
+
+function parseMercariSearchPageDetailed(
+  html: string,
+  query: string,
+  limit = 20
+): { results: ScrapedListing[]; note?: string } {
+  const anchorResults = parseMercariAnchorSearchPage(html, query, limit)
+  if (anchorResults.length > 0) {
+    return { results: anchorResults }
+  }
+
+  const selectorResults = parseMercariSelectorSearchPage(html, query, limit)
+  if (selectorResults.length > 0) {
+    return {
+      results: selectorResults,
+      note: 'Mercari search page used selector fallback.'
+    }
+  }
+
+  const embeddedResults = parseMercariEmbeddedSearchPage(html, query, limit)
+  if (embeddedResults.length > 0) {
+    return {
+      results: embeddedResults,
+      note: 'Mercari search page used embedded JSON fallback.'
+    }
+  }
+
+  return {
+    results: [],
+    note: 'Mercari search page did not expose listing cards or embedded data in the public HTML; browser-backed scraping is still required for that source.'
+  }
+}
+
+function parseMercariSearchPage(
+  html: string,
+  query: string,
+  limit = 20
+): ScrapedListing[] {
+  return parseMercariSearchPageDetailed(html, query, limit).results
 }
 
 async function scrapeMarketplaceSearch(
@@ -593,14 +944,16 @@ async function scrapeMarketplaceSearch(
 ): Promise<{ results: ScrapedListing[]; note?: string }> {
   const url = buildSearchUrl(marketplace, query)
   const html = await fetchHtml(url, fetchImpl, timeoutMs)
-  const results = parseMarketplaceSearchPage(marketplace, html, query, limit)
-
-  if (marketplace === 'mercari' && results.length === 0) {
-    return {
-      results,
-      note: 'Mercari search page did not expose listing cards in the public HTML; browser-backed scraping is still required for that source.'
+  if (marketplace === 'mercari') {
+    const mercariResults = parseMercariSearchPageDetailed(html, query, limit)
+    if (mercariResults.results.length > 0) {
+      return mercariResults
     }
+
+    return mercariResults
   }
+
+  const results = parseMarketplaceSearchPage(marketplace, html, query, limit)
 
   return {
     results,
@@ -630,6 +983,7 @@ function buildAlexDigest(
   scanId: string,
   generatedAt: string,
   report: ReturnType<typeof buildMvpReport>,
+  feedbackSignals: FeedbackSignalSummary,
   notifications: ReturnType<typeof buildNotificationPayload>[],
   reviews: ReturnType<typeof buildTraderReviewPacket>[],
   sourceSummaries: LiveSourceSummary[],
@@ -663,6 +1017,7 @@ function buildAlexDigest(
     `pipeline=${report.pipeline.total} | notify=${report.pipeline.notifyCount} | review=${report.pipeline.reviewCount} | pass=${report.pipeline.passCount}`,
     `precision=${report.matched.precision == null ? 'n/a' : `${(report.matched.precision * 100).toFixed(1)}%`} | falsePositiveRate=${report.matched.falsePositiveRate == null ? 'n/a' : `${(report.matched.falsePositiveRate * 100).toFixed(1)}%`}`,
     `calibrationLabels=${report.labels.totalLabels}`,
+    `feedbackSignals=sealMissing ${feedbackSignals.sealMissingCount} | sellerRisk ${feedbackSignals.sellerRiskCount} | packMismatch ${feedbackSignals.packMismatchCount} | photoRisk ${feedbackSignals.photoRiskCount} | conditionMismatch ${feedbackSignals.conditionMismatchCount}`,
     `coverage=raw ${riskGroupCounts.raw} | slab ${riskGroupCounts.slab} | sealed ${riskGroupCounts.sealed}`,
     compactSourceSummary.length > 0 ? `sources=${compactSourceSummary}` : 'sources=none',
     unavailableSummary.length > 0 ? `source-notes=${unavailableSummary.join(' | ')}` : 'source-notes=none',
@@ -999,6 +1354,7 @@ export async function runLiveScan(
   )
   const alexFeedback = await listAlexFeedback(artifactStore, 100)
   const calibrationLabels = dedupeCalibrationLabels([...alexFeedback, ...labels])
+  const feedbackSignals = collectFeedbackSignalSummary(alexFeedback)
   const scoringConfig = await loadJson<Partial<ScoringConfig & CalibrationInput>>(
     resolveWorkflowPath(options.configPath, DEFAULT_CONFIG_PATH)
   )
@@ -1047,11 +1403,11 @@ export async function runLiveScan(
   const unavailableSources: string[] = []
 
   for (const result of taskResults) {
-    const status: LiveSourceSummary['status'] =
-      'error' in result && result.error
-        ? 'error'
-        : result.note != null && result.results.length === 0
-          ? result.task.marketplace === 'mercari'
+      const status: LiveSourceSummary['status'] =
+        'error' in result && result.error
+          ? 'error'
+          : result.note != null && result.results.length === 0
+          ? result.task.marketplace === 'mercari' && result.note.includes('browser-backed')
             ? 'unsupported'
             : 'empty'
           : 'ok'
@@ -1120,7 +1476,7 @@ export async function runLiveScan(
     buildOpportunityListing(entry.listing, entry.watchlist, generatedAt, entry.query)
   )
 
-  const scores = scoreBatch(opportunities, calibration, scoringConfig)
+  const scores = scoreBatch(opportunities, calibration, scoringConfig, feedbackSignals)
   const limitedScores = scores
   const report = buildMvpReport(limitedScores, calibrationLabels)
   const notifications = limitedScores
@@ -1135,6 +1491,7 @@ export async function runLiveScan(
     scanId,
     generatedAt,
     report,
+    feedbackSignals,
     notifications,
     reviews,
     sourceSummaries,
@@ -1153,6 +1510,7 @@ export async function runLiveScan(
     opportunities,
     scores: limitedScores,
     report,
+    feedbackSignals,
     notifications,
     reviews,
     alexDigest,
@@ -1167,6 +1525,7 @@ export async function runLiveScan(
     opportunities,
     scores: limitedScores,
     report,
+    feedbackSignals,
     notifications,
     reviews,
     alexDigest,
@@ -1175,6 +1534,7 @@ export async function runLiveScan(
   await artifactStore.writeJson('inbox/latest.json', {
     scanId,
     generatedAt,
+    feedbackSignals,
     notifications,
     reviews,
     alexDigest,
@@ -1183,6 +1543,7 @@ export async function runLiveScan(
   await artifactStore.writeJson(inboxArtifactPath, {
     scanId,
     generatedAt,
+    feedbackSignals,
     notifications,
     reviews,
     alexDigest,
@@ -1216,6 +1577,7 @@ export async function runLiveScan(
   return {
     scanId,
     generatedAt,
+    feedbackSignals,
     watchlist: selectedWatchlist,
     sourceSummaries,
     scrapedListings: dedupedListings,

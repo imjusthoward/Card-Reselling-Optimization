@@ -12,10 +12,12 @@ describe('dashboard html', () => {
     expect(html).toContain('Live queue')
     expect(html).toContain('Selected listing')
     expect(html).toContain('Feedback history')
+    expect(html).toContain('Notes and priming')
     expect(html).toContain('feedback-form')
     expect(html).toContain('scan-button')
     expect(html).toContain('Copy digest')
     expect(html).toContain('Scan health')
+    expect(html).toContain('used in calibration')
   })
 
   it('persists in-progress feedback drafts across refreshes', () => {
@@ -31,9 +33,10 @@ describe('dashboard html', () => {
     expect(html).toContain('feedback-summary')
     expect(html).toContain('feedback-row')
     expect(html).toContain('reviewedAt')
+    expect(html).toContain('feedback-note')
   })
 
-  it('renders every feedback row and preserves the dirty selection on refresh', () => {
+  it('renders every feedback row and shows calibration supersession for duplicate notes', () => {
     const feedbackHtml = buildFeedbackListHtml([
       {
         listingId: 'snkrdunk:567433',
@@ -46,20 +49,34 @@ describe('dashboard html', () => {
         notes: 'シュリンクなし, not factory sealed, calculated at sealed price'
       },
       {
-        listingId: 'yahoo_flea:z543712814',
-        marketplace: 'yahoo_flea',
+        listingId: 'snkrdunk:567433',
+        marketplace: 'snkrdunk',
         riskGroup: 'sealed',
         authenticity: 'fake',
         condition: 'uncertain',
         recommendedAction: 'pass',
         reviewedAt: '2026-04-09T10:19:20.893Z',
-        notes: 'Same seller and situation as Source listing id: z545864876'
+        notes: 'Old correction that should be superseded.'
       }
-    ])
+    ], {
+      generatedAt: '2026-04-09T10:21:00.893Z',
+      report: {
+        labels: {
+          totalLabels: 9
+        }
+      }
+    })
 
     expect((feedbackHtml.match(/feedback-row/g) ?? []).length).toBe(2)
-    expect(feedbackHtml).toContain('feedback-summary')
-    expect(feedbackHtml).toContain('Calibration feed')
+    expect(feedbackHtml).toContain('priming active')
+    expect(feedbackHtml).toContain('used 1/2')
+    expect(feedbackHtml).toContain('superseded 1')
+    expect(feedbackHtml).toContain('Notes and priming')
+    expect(feedbackHtml).toContain('seal risk')
+    expect(feedbackHtml).toContain('seller risk')
+    expect(feedbackHtml).toContain('Full note')
+    expect(feedbackHtml).toContain('used in calibration')
+    expect(feedbackHtml).toContain('superseded')
 
     expect(
       resolveSelectedIdAfterRefresh(

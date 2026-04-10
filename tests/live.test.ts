@@ -63,6 +63,42 @@ const snkrdunkHtml = `
   </html>
 `
 
+const mercariEmbeddedHtml = `
+  <html>
+    <body>
+      <script id="__NEXT_DATA__" type="application/json">
+        {
+          "props": {
+            "pageProps": {
+              "search": {
+                "items": [
+                  {
+                    "id": "m98765",
+                    "title": "テラスタルフェスex ボックス",
+                    "price": 14980,
+                    "imageUrl": "https://example.com/mercari-json.jpg"
+                  }
+                ]
+              }
+            }
+          }
+        }
+      </script>
+    </body>
+  </html>
+`
+
+const mercariHtml = `
+  <html>
+    <body>
+      <a href="https://jp.mercari.com/item/m12345678901">
+        <img alt="テラスタルフェスex ボックス" data-src="https://example.com/mercari.jpg" />
+        <p>15,800円</p>
+      </a>
+    </body>
+  </html>
+`
+
 const shrinkMissingYahooHtml = `
   <html>
     <body>
@@ -74,9 +110,10 @@ const shrinkMissingYahooHtml = `
   </html>
 `
 
-function makeFetch(options: { yahooHtml?: string; snkrdunkHtml?: string } = {}): typeof fetch {
+function makeFetch(options: { yahooHtml?: string; snkrdunkHtml?: string; mercariHtml?: string } = {}): typeof fetch {
   const yahooMarkup = options.yahooHtml ?? yahooHtml
   const snkrMarkup = options.snkrdunkHtml ?? snkrdunkHtml
+  const mercariMarkup = options.mercariHtml ?? '<html></html>'
 
   return (async (input: Parameters<typeof fetch>[0]) => {
     const url = typeof input === 'string' ? input : input.toString()
@@ -87,6 +124,10 @@ function makeFetch(options: { yahooHtml?: string; snkrdunkHtml?: string } = {}):
 
     if (url.includes('snkrdunk.com')) {
       return new Response(snkrMarkup, { status: 200 })
+    }
+
+    if (url.includes('jp.mercari.com')) {
+      return new Response(mercariMarkup, { status: 200 })
     }
 
     return new Response('<html></html>', { status: 200 })
@@ -261,6 +302,121 @@ describe('live scan', () => {
     expect(result.alexDigest).toContain('sources=')
   })
 
+  it('lets Alex note themes bias the next score pass', async () => {
+    const watchlistPath = await createTempWatchlist()
+    const labelsPath = await createTempLabelsFile([])
+    const artifactStore = new MemoryArtifactStore()
+    const fetchImpl = makeFetch()
+
+    const baseline = await runLiveScan({
+      watchlistPath,
+      labelsPath,
+      configPath: 'data/scoring-config.json',
+      watchlistLimit: 1,
+      queryStrategy: 'primary',
+      sourceFilter: ['yahoo_flea'],
+      limitPerQuery: 5,
+      searchConcurrency: 1,
+      fetchTimeoutMs: 2000,
+      maxNotifications: 5,
+      maxReviews: 5,
+      artifactStore,
+      fetchImpl,
+      notifyAlex: false
+    })
+
+    const baselineScore = baseline.scores.find(
+      score => score.listing.marketplace === 'yahoo_flea' && score.listing.riskGroup === 'sealed'
+    )
+
+    expect(baselineScore).toBeDefined()
+
+    await artifactStore.writeJson('feedback/latest.json', [
+      {
+        listingId: 'yahoo_flea:z12345',
+        marketplace: 'yahoo_flea',
+        riskGroup: 'sealed',
+        authenticity: 'fake',
+        condition: 'uncertain',
+        recommendedAction: 'pass',
+        confidence: 0.95,
+        notes: 'Same seller, 0 reviews, blurry photo, and loose packs.',
+        sourceUrl: 'https://paypayfleamarket.yahoo.co.jp/item/z12345',
+        sourceListingId: 'z12345',
+        sourceQuery: 'テラスタルフェスex ボックス',
+        reviewer: 'alex',
+        reviewedAt: '2026-04-09T10:20:40.893Z'
+      }
+    ])
+
+    const biased = await runLiveScan({
+      watchlistPath,
+      labelsPath,
+      configPath: 'data/scoring-config.json',
+      watchlistLimit: 1,
+      queryStrategy: 'primary',
+      sourceFilter: ['yahoo_flea'],
+      limitPerQuery: 5,
+      searchConcurrency: 1,
+      fetchTimeoutMs: 2000,
+      maxNotifications: 5,
+      maxReviews: 5,
+      artifactStore,
+      fetchImpl,
+      notifyAlex: false
+    })
+
+    const biasedScore = biased.scores.find(
+      score => score.listing.marketplace === 'yahoo_flea' && score.listing.riskGroup === 'sealed'
+    )
+
+    expect(biasedScore).toBeDefined()
+    expect(biasedScore?.authProbability).toBeLessThan(baselineScore!.authProbability)
+    expect(biasedScore?.reasons).toContain('feedback-seller-risk')
+  })
+
+  it('uses Mercari embedded JSON fallback when the anchor cards are missing', async () => {
+    const watchlistPath = await createTempWatchlist([
+      {
+        id: 'mercari-terastal-fes-ex-box',
+        title: 'テラスタルフェスex ボックス',
+        marketplaces: ['mercari'],
+        searchTerms: ['テラスタルフェスex ボックス'],
+        riskGroup: 'sealed',
+        cleanExitJpy: 25000,
+        damagedExitJpy: 21000,
+        exitCostsJpy: 1000,
+        salvageJpy: 15000,
+        liquidityScore: 0.92,
+        active: true
+      }
+    ])
+    const artifactStore = new MemoryArtifactStore()
+    const fetchImpl = makeFetch({ mercariHtml: mercariEmbeddedHtml })
+
+    const result = await runLiveScan({
+      watchlistPath,
+      labelsPath: 'data/sample-labels.json',
+      configPath: 'data/scoring-config.json',
+      watchlistLimit: 1,
+      queryStrategy: 'primary',
+      sourceFilter: ['mercari'],
+      limitPerQuery: 5,
+      searchConcurrency: 1,
+      fetchTimeoutMs: 2000,
+      maxNotifications: 5,
+      maxReviews: 5,
+      artifactStore,
+      fetchImpl,
+      notifyAlex: false
+    })
+
+    expect(result.scrapedListings).toHaveLength(1)
+    expect(result.scrapedListings[0]?.sourceListingId).toBe('m98765')
+    expect(result.sourceSummaries[0]?.status).toBe('ok')
+    expect(result.sourceSummaries[0]?.note).toContain('embedded JSON fallback')
+  })
+
   it('lets the newest Alex label supersede earlier feedback on the same listing', async () => {
     const watchlistPath = await createTempWatchlist()
     const labelsPath = await createTempLabelsFile([])
@@ -366,5 +522,15 @@ describe('live scan', () => {
     expect(result.alexDigest).toContain('coverage=raw 0 | slab 0 | sealed 0')
     expect(result.alexDigest).toContain('sources=mercari:unsupported')
     expect(result.alexDigest).toContain('source-notes=mercari:')
+  })
+
+  it('parses mercari anchors with absolute item URLs and alternate image attributes', () => {
+    const results = parseMarketplaceSearchPage('mercari', mercariHtml, 'テラスタルフェスex ボックス', 5)
+
+    expect(results).toHaveLength(1)
+    expect(results[0]?.sourceListingId).toBe('m12345678901')
+    expect(results[0]?.title).toBe('テラスタルフェスex ボックス')
+    expect(results[0]?.askingPriceJpy).toBe(15800)
+    expect(results[0]?.imageUrl).toBe('https://example.com/mercari.jpg')
   })
 })
