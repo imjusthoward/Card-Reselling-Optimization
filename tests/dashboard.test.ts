@@ -18,6 +18,8 @@ describe('dashboard html', () => {
     expect(html).toContain('Copy digest')
     expect(html).toContain('Scan health')
     expect(html).toContain('used in calibration')
+    expect(html).toContain('Cross-list drafts')
+    expect(html).toContain('draft-list')
   })
 
   it('persists in-progress feedback drafts across refreshes', () => {
@@ -34,6 +36,8 @@ describe('dashboard html', () => {
     expect(html).toContain('feedback-row')
     expect(html).toContain('reviewedAt')
     expect(html).toContain('feedback-note')
+    expect(html).toContain('draft-row')
+    expect(html).toContain('draft-plan')
   })
 
   it('renders every feedback row and shows calibration supersession for duplicate notes', () => {
@@ -78,6 +82,8 @@ describe('dashboard html', () => {
     expect(feedbackHtml).toContain('Full note')
     expect(feedbackHtml).toContain('used in calibration')
     expect(feedbackHtml).toContain('superseded')
+    expect(feedbackHtml).toContain('seal risk 1')
+    expect(feedbackHtml).toContain('seller risk 1')
 
     expect(
       resolveSelectedIdAfterRefresh(

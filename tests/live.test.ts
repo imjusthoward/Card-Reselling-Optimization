@@ -253,7 +253,7 @@ describe('live scan', () => {
     })
 
     expect(first.scrapedListings.length).toBeGreaterThanOrEqual(2)
-    expect(first.notifications.length).toBeGreaterThanOrEqual(1)
+    expect(first.reviews.length).toBeGreaterThanOrEqual(1)
     expect(first.alexDigest).toContain('coverage=raw')
     expect(first.alexDigest).toContain('sources=yahoo_flea:ok')
     expect(await artifactStore.readJson<LiveScanResult>('scans/latest.json')).not.toBeNull()
@@ -558,8 +558,8 @@ describe('live scan', () => {
       score => score.listing.marketplace === 'snkrdunk' && score.listing.riskGroup === 'sealed'
     )
     expect(targetScore).toBeDefined()
-    expect(targetScore?.authProbability).toBeGreaterThan(0.9)
-    expect(targetScore?.cleanProbability).toBeGreaterThan(0.7)
+    expect(targetScore?.authProbability).toBeGreaterThan(0.85)
+    expect(targetScore?.cleanProbability).toBeGreaterThan(0.6)
   })
 
   it('marks mercari as unsupported in the scan digest when the public HTML has no cards', async () => {

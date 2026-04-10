@@ -1,12 +1,15 @@
 import {
   getCalibrationBucket
 } from './calibration.js'
+import { buildSentimentAdjustment } from './sentiment.js'
+import { estimatePhotoPregrade } from './pregrader.js'
 import {
   type CalibrationProfile,
   type FeedbackSignalSummary,
   type OpportunityListing,
   type OpportunityScore,
   type Recommendation,
+  type SentimentSummary,
   type ScoringConfig
 } from './types.js'
 
@@ -181,11 +184,46 @@ function shrinkWrapAdjustment(
   return { cleanDelta, reasons }
 }
 
+function photoPregradeAdjustment(
+  photoPregrade: ReturnType<typeof estimatePhotoPregrade>
+): { authDelta: number; cleanDelta: number; confidenceDelta: number; reasons: string[] } {
+  const reasons: string[] = []
+  const combined = photoPregrade.centeringScore * 0.55 + photoPregrade.photoQualityScore * 0.45
+  let authDelta = 0
+  let cleanDelta = 0
+  let confidenceDelta = 0
+
+  if (combined >= 0.85) {
+    authDelta += 0.05
+    cleanDelta += 0.08
+    confidenceDelta += 0.04
+    addReason(reasons, 'photo-pregrade-strong')
+  } else if (combined >= 0.7) {
+    authDelta += 0.02
+    cleanDelta += 0.04
+    confidenceDelta += 0.02
+    addReason(reasons, 'photo-pregrade-good')
+  } else if (combined <= 0.45) {
+    authDelta -= 0.08
+    cleanDelta -= 0.1
+    confidenceDelta -= 0.05
+    addReason(reasons, 'photo-pregrade-weak')
+  } else if (combined <= 0.55) {
+    authDelta -= 0.03
+    cleanDelta -= 0.04
+    confidenceDelta -= 0.02
+    addReason(reasons, 'photo-pregrade-borderline')
+  }
+
+  return { authDelta, cleanDelta, confidenceDelta, reasons }
+}
+
 export function scoreOpportunity(
   listing: OpportunityListing,
   calibration: CalibrationProfile,
   config: Partial<ScoringConfig> = {},
-  feedbackSignals?: FeedbackSignalSummary
+  feedbackSignals?: FeedbackSignalSummary,
+  sentimentSummary?: SentimentSummary
 ): OpportunityScore {
   const scoringConfig = { ...DEFAULT_SCORING_CONFIG, ...config }
   const bucket = getCalibrationBucket(
@@ -213,6 +251,12 @@ export function scoreOpportunity(
   cleanProbability += imageAdjustment.cleanDelta
   reasons.push(...imageAdjustment.reasons)
 
+  const photoPregrade = estimatePhotoPregrade(listing)
+  const pregradeAdjustment = photoPregradeAdjustment(photoPregrade)
+  authProbability += pregradeAdjustment.authDelta
+  cleanProbability += pregradeAdjustment.cleanDelta
+  reasons.push(...pregradeAdjustment.reasons)
+
   const shrinkWrap = shrinkWrapAdjustment(listing)
   cleanProbability += shrinkWrap.cleanDelta
   reasons.push(...shrinkWrap.reasons)
@@ -223,6 +267,9 @@ export function scoreOpportunity(
   authProbability += feedbackAdjustment.authDelta
   cleanProbability += feedbackAdjustment.cleanDelta
   reasons.push(...feedbackAdjustment.reasons)
+
+  const sentimentAdjustment = buildSentimentAdjustment(listing, sentimentSummary)
+  reasons.push(...sentimentAdjustment.reasons)
 
   const liquidityScore = clamp(listing.liquidityScore ?? 0.5, 0, 1)
   const conditionConfidence = listing.conditionConfidence
@@ -270,12 +317,17 @@ export function scoreOpportunity(
       cleanProbability * 0.3 +
       liquidityScore * 0.18 +
       (listing.hasMarketplaceAuthentication ? 0.03 : 0) +
-      (listing.priceSheetMatch ? 0.03 : 0),
+      (listing.priceSheetMatch ? 0.03 : 0) +
+      pregradeAdjustment.confidenceDelta,
     0,
     1
   )
   const priorityScore =
-    Math.max(0, expectedNetJpy) * confidence * authProbability * liquidityScore
+    Math.max(0, expectedNetJpy) *
+    confidence *
+    authProbability *
+    liquidityScore *
+    sentimentAdjustment.priorityMultiplier
 
   if (expectedNetJpy > 0) {
     addReason(reasons, 'positive-ev')
@@ -310,7 +362,8 @@ export function scoreOpportunity(
     confidence,
     priorityScore,
     recommendation,
-    reasons
+    reasons,
+    photoPregrade
   }
 }
 
@@ -318,10 +371,11 @@ export function scoreBatch(
   listings: OpportunityListing[],
   calibration: CalibrationProfile,
   config: Partial<ScoringConfig> = {},
-  feedbackSignals?: FeedbackSignalSummary
+  feedbackSignals?: FeedbackSignalSummary,
+  sentimentSummary?: SentimentSummary
 ): OpportunityScore[] {
   return listings
-    .map(listing => scoreOpportunity(listing, calibration, config, feedbackSignals))
+    .map(listing => scoreOpportunity(listing, calibration, config, feedbackSignals, sentimentSummary))
     .sort(
       (left, right) =>
         right.priorityScore - left.priorityScore ||

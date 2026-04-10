@@ -26,6 +26,7 @@ interface ScanOptions {
   channel: 'dashboard' | 'whatsapp' | 'sms' | 'telegram' | 'discord' | 'email'
   notifyAlex: boolean
   alexWebhookUrl?: string
+  sentimentPath?: string
 }
 
 function parseOptionalInt(value: string | undefined): number | undefined {
@@ -91,7 +92,8 @@ function parseArgs(argv: string[]): ScanOptions {
     output: 'digest',
     queryStrategy: parseQueryStrategy(process.env.ARB_QUERY_STRATEGY),
     channel: parseChannel(process.env.ARB_CHANNEL),
-    notifyAlex: parseBoolean(process.env.ARB_NOTIFY_ALEX, true)
+    notifyAlex: parseBoolean(process.env.ARB_NOTIFY_ALEX, true),
+    sentimentPath: process.env.ARB_SENTIMENT_PATH?.trim() || undefined
   }
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -201,6 +203,7 @@ async function main(): Promise<void> {
     fetchTimeoutMs: options.fetchTimeoutMs,
     maxNotifications: options.maxNotifications,
     maxReviews: options.maxReviews,
+    sentimentPath: options.sentimentPath,
     notificationChannel: options.channel,
     notifyAlex: options.notifyAlex,
     alexWebhookUrl: options.alexWebhookUrl

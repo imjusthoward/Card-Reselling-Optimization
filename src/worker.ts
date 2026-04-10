@@ -26,6 +26,7 @@ interface WorkerConfig {
   maxReviews?: number
   channel: 'dashboard' | 'whatsapp' | 'sms' | 'telegram' | 'discord' | 'email'
   alexWebhookUrl?: string
+  sentimentPath?: string
   artifactStore: ArtifactStore
 }
 
@@ -101,6 +102,7 @@ function createWorkerConfig(): WorkerConfig {
     maxReviews: parseOptionalInt(process.env.ARB_MAX_REVIEWS),
     channel: parseChannel(process.env.ARB_CHANNEL),
     alexWebhookUrl: process.env.ARB_ALEX_WEBHOOK_URL?.trim() || undefined,
+    sentimentPath: process.env.ARB_SENTIMENT_PATH?.trim() || undefined,
     artifactStore: createArtifactStore(
       process.env.ARB_STORAGE_BUCKET ?? process.env.ARB_EVIDENCE_BUCKET
     )
@@ -167,6 +169,7 @@ async function runOnce(config: WorkerConfig): Promise<void> {
     fetchTimeoutMs: config.fetchTimeoutMs,
     maxNotifications: config.maxNotifications,
     maxReviews: config.maxReviews,
+    sentimentPath: config.sentimentPath,
     notificationChannel: config.channel,
     notifyAlex: false
   })

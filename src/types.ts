@@ -30,6 +30,13 @@ export interface ListingImageEvidence {
   closeupsVisible?: boolean
 }
 
+export interface PhotoPregrade {
+  centeringScore: number
+  photoQualityScore: number
+  estimatedGradeBand: string
+  reasons: string[]
+}
+
 export interface SellerSignals {
   rating?: number
   salesCount?: number
@@ -61,6 +68,7 @@ export interface OpportunityListing {
   scrapedAt?: string
   imageUrls?: string[]
   notes?: string[]
+  photoPregrade?: PhotoPregrade
 }
 
 export interface TraderLabel {
@@ -103,6 +111,46 @@ export interface FeedbackSignalSummary {
   conditionMismatchCount: number
 }
 
+export interface SentimentFeedItem {
+  channel?: string
+  source?: string
+  postedAt?: string
+  text: string
+}
+
+export interface SentimentTopicSignal {
+  topic: string
+  score: number
+  bullishMentions: number
+  bearishMentions: number
+  mentionCount: number
+  samplePhrases: string[]
+}
+
+export interface SentimentSummary {
+  totalPosts: number
+  bullishPosts: number
+  bearishPosts: number
+  netScore: number
+  topicSignals: SentimentTopicSignal[]
+}
+
+export interface CrossListDraft {
+  listingId: string
+  targetMarketplace: 'ebay' | 'other'
+  sourceMarketplace: Marketplace
+  title: string
+  sourceUrl?: string
+  sourceListingId?: string
+  sourceQuery?: string
+  suggestedPriceJpy: number
+  suggestedPriceLabel: string
+  approvalRequired: boolean
+  fulfillmentPlan: string
+  reasons: string[]
+  photoPregrade?: PhotoPregrade
+}
+
 export interface CalibrationBucket {
   authenticity: ProbabilityEstimate
   cleanCondition: ProbabilityEstimate
@@ -137,6 +185,7 @@ export interface OpportunityScore {
   priorityScore: number
   recommendation: Recommendation
   reasons: string[]
+  photoPregrade?: PhotoPregrade
 }
 
 export interface WatchlistEntry {

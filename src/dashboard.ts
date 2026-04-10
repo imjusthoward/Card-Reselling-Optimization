@@ -396,6 +396,11 @@ h2 {
   gap: 0;
 }
 
+#draft-list {
+  display: grid;
+  gap: 0;
+}
+
 .item,
 .card,
 .empty {
@@ -686,6 +691,20 @@ textarea { min-height: 96px; resize: vertical; }
   margin-bottom: 4px;
 }
 
+.draft-row {
+  display: grid;
+  gap: 8px;
+}
+
+.draft-plan {
+  padding: 10px 12px;
+  border: 1px solid rgba(28, 90, 73, 0.16);
+  border-radius: 12px;
+  background: rgba(28, 90, 73, 0.06);
+  color: var(--muted);
+  line-height: 1.45;
+}
+
 .empty {
   color: var(--muted);
 }
@@ -737,7 +756,8 @@ const nodes = {
   queue: document.getElementById('queue-list'),
   health: document.getElementById('health-list'),
   detail: document.getElementById('detail-view'),
-  feedback: document.getElementById('feedback-list')
+  feedback: document.getElementById('feedback-list'),
+  drafts: document.getElementById('draft-list')
 };
 
 function readAccessKey() {
@@ -1155,6 +1175,8 @@ function renderSourceHealth() {
   var opportunities = Array.isArray(latest.opportunities) ? latest.opportunities : [];
   var calibration = summarizeCalibrationFeedback(state.feedback);
   var feedbackSignals = latest.feedbackSignals || null;
+  var sentimentSummary = latest.sentimentSummary || null;
+  var crossListDrafts = Array.isArray(latest.crossListDrafts) ? latest.crossListDrafts : [];
   var riskGroups = summarizeRiskGroups(opportunities);
   var calibrationLabels = latest.report && latest.report.labels
     ? Number(latest.report.labels.totalLabels || 0)
@@ -1169,6 +1191,9 @@ function renderSourceHealth() {
     return entry && entry.riskGroup === 'sealed' && entry.shrinkWrapState === 'missing';
   }).length;
   var latestStamp = latest.generatedAt ? formatClock(latest.generatedAt) : 'unknown';
+  var topSentimentSignals = sentimentSummary && Array.isArray(sentimentSummary.topicSignals)
+    ? sentimentSummary.topicSignals.slice(0, 3)
+    : [];
 
   var rows = [
     '<div class="health-row">',
@@ -1183,9 +1208,20 @@ function renderSourceHealth() {
     '<span class="pill">labels ' + String(calibrationLabels) + '</span>',
     '<span class="pill">feedback used ' + String(calibration.used) + '/' + String(calibration.total) + '</span>',
     '<span class="pill">superseded ' + String(calibration.superseded) + '</span>',
+    '<span class="pill">drafts ' + String(crossListDrafts.length) + '</span>',
     '</div>',
     '<strong>Calibration Status</strong>',
     '<div class="subtle">slab/graded matches ' + String(slabMatches) + ' • watchlist price-sheet flags ' + String(priceSheetMatches) + ' • shrinkless sealed ' + String(missingShrinkWrap) + '</div>',
+    sentimentSummary
+      ? '<div style="margin-top: 10px;">'
+        + '<div class="subtle">Market sentiment: posts ' + String(sentimentSummary.totalPosts) + ' • bullish ' + String(sentimentSummary.bullishPosts) + ' • bearish ' + String(sentimentSummary.bearishPosts) + ' • net ' + String(sentimentSummary.netScore) + '</div>'
+        + (topSentimentSignals.length > 0
+          ? '<div class="row" style="margin-top: 8px;">' + topSentimentSignals.map(function (signal) {
+              return '<span class="pill">' + escapeHtml(signal.topic) + ' ' + String(signal.score) + '</span>';
+            }).join('') + '</div>'
+          : '')
+        + '</div>'
+      : '',
     feedbackSignals
       ? '<div class="row" style="margin-top: 10px;">'
         + (feedbackSignals.sealMissingCount ? '<span class="pill">seal risk ' + String(feedbackSignals.sealMissingCount) + '</span>' : '')
@@ -1289,7 +1325,8 @@ function buildItems(latest) {
       scrapedAt: packet.scrapedAt || (listing && listing.scrapedAt) || '',
       scanGeneratedAt: latest.generatedAt || '',
       imageUrl: opportunity && opportunity.imageUrls && opportunity.imageUrls[0] ? opportunity.imageUrls[0] : '',
-      notes: opportunity && Array.isArray(opportunity.notes) ? opportunity.notes : []
+      notes: opportunity && Array.isArray(opportunity.notes) ? opportunity.notes : [],
+      photoPregrade: score && score.photoPregrade ? score.photoPregrade : null
     };
   }
 
@@ -1372,9 +1409,9 @@ function fillForm(item) {
   if (cond) { cond.checked = true; }
   if (act) { act.checked = true; }
 
-  var confidenceValue = form.querySelector('[data-confidence-value]');
-  if (confidenceValue) {
-    confidenceValue.textContent = Number(form.querySelector('[name="confidence"]').value).toFixed(2);
+  var confidenceOutput = form.querySelector('[data-confidence-value]');
+  if (confidenceOutput) {
+    confidenceOutput.textContent = Number(form.querySelector('[name="confidence"]').value).toFixed(2);
   }
 
   syncChoiceStates();
@@ -1417,6 +1454,49 @@ function renderFeedbackList() {
   nodes.feedback.innerHTML = buildFeedbackListHtml(state.feedback, state.latest);
 }
 
+function buildCrossListDraftHtml(drafts) {
+  if (!Array.isArray(drafts) || drafts.length === 0) {
+    return '<div class="empty"><strong>No downstream drafts yet.</strong><div class="subtle">High-arbitrage buy candidates will appear here as approval-only eBay or other marketplace drafts.</div></div>';
+  }
+
+  return drafts.map(function (draft, index) {
+    var pregrade = draft && draft.photoPregrade ? draft.photoPregrade : null;
+    var pregradeText = pregrade
+      ? 'photo pregrade ' + String(Math.round(pregrade.centeringScore * 100)) + '% / ' + String(Math.round(pregrade.photoQualityScore * 100)) + '%'
+      : 'photo pregrade n/a';
+    var reasons = Array.isArray(draft.reasons) ? draft.reasons.slice(0, 3).join(' • ') : '';
+
+    return [
+      '<div class="card draft-row">',
+      '<div class="meta">',
+      '<span class="pill buy">draft</span>',
+      '<span class="pill">' + escapeHtml(draft.targetMarketplace || 'ebay') + '</span>',
+      '<span class="pill">' + escapeHtml(draft.sourceMarketplace || 'other') + '</span>',
+      '<span class="pill">#' + String(index + 1).padStart(2, '0') + '</span>',
+      '</div>',
+      '<div class="title" style="font-size: 0.95rem; margin-top: 4px;">' + escapeHtml(draft.title || 'Untitled draft') + '</div>',
+      '<div class="subtle">' + escapeHtml(draft.suggestedPriceLabel || formatJpy(draft.suggestedPriceJpy || 0)) + ' • approval-only</div>',
+      '<div class="row" style="margin-top: 8px;">',
+      '<span class="pill">source ' + escapeHtml(draft.sourceListingId || 'n/a') + '</span>',
+      '<span class="pill">list ' + escapeHtml(draft.sourceQuery || 'n/a') + '</span>',
+      '<span class="pill">' + escapeHtml(pregradeText) + '</span>',
+      '</div>',
+      '<div class="draft-plan">' + escapeHtml(draft.fulfillmentPlan || 'Manual approval required.') + '</div>',
+      reasons ? '<div class="row" style="margin-top: 8px;">' + reasons.split(' • ').map(function (reason) { return '<span class="pill">' + escapeHtml(reason) + '</span>'; }).join('') + '</div>' : '',
+      '</div>'
+    ].join('');
+  }).join('');
+}
+
+function renderCrossListDrafts() {
+  if (!nodes.drafts) {
+    return;
+  }
+
+  var drafts = state.latest && Array.isArray(state.latest.crossListDrafts) ? state.latest.crossListDrafts : [];
+  nodes.drafts.innerHTML = buildCrossListDraftHtml(drafts);
+}
+
 function resolveSelectedIdAfterRefresh(currentSelectedId, items, preserveDetail) {
   if (preserveDetail) {
     return currentSelectedId;
@@ -1437,6 +1517,7 @@ function renderDetail() {
 
   var reasons = Array.isArray(item.reasons) ? item.reasons : [];
   var notes = Array.isArray(item.notes) ? item.notes : [];
+  var photoPregrade = item.photoPregrade || null;
   var listedAt = item.scrapedAt || item.scanGeneratedAt || (state.latest && state.latest.generatedAt) || '';
   var image = item.imageUrl
     ? '<img src="' + escapeHtml(item.imageUrl) + '" alt="' + escapeHtml(item.title) + '" loading="lazy" referrerpolicy="no-referrer" />'
@@ -1461,6 +1542,9 @@ function renderDetail() {
     '<div class="metric"><small>Auth probability</small><strong>' + formatPercent(item.authProbability) + '</strong></div>',
     '<div class="metric"><small>Clean probability</small><strong>' + formatPercent(item.cleanProbability) + '</strong></div>',
     '<div class="metric"><small>Confidence</small><strong>' + formatPercent(item.confidence) + '</strong></div>',
+    photoPregrade
+      ? '<div class="metric"><small>Photo pregrade</small><strong>' + escapeHtml(photoPregrade.estimatedGradeBand || 'n/a') + '</strong><div class="subtle">centering ' + formatPercent(photoPregrade.centeringScore || 0) + ' • quality ' + formatPercent(photoPregrade.photoQualityScore || 0) + '</div></div>'
+      : '<div class="metric"><small>Photo pregrade</small><strong>n/a</strong><div class="subtle">No photo pregrade proxy yet.</div></div>',
     '</div>',
     '<div class="frame">',
     image,
@@ -1477,6 +1561,7 @@ function renderDetail() {
     item.sourceUrl ? '<a class="button ghost" href="' + escapeHtml(item.sourceUrl) + '" target="_blank" rel="noreferrer">Open source</a>' : '',
     reasons.length ? '<div><div class="subtle" style="margin-bottom: 6px;">Reasons</div><div class="row">' + reasons.map(function (reason) { return '<span class="pill">' + escapeHtml(reason) + '</span>'; }).join('') + '</div></div>' : '',
     notes.length ? '<div><div class="subtle" style="margin-bottom: 6px;">Watchlist notes</div><div class="row">' + notes.map(function (note) { return '<span class="pill">' + escapeHtml(note) + '</span>'; }).join('') + '</div></div>' : '',
+    photoPregrade ? '<div><div class="subtle" style="margin-bottom: 6px;">Photo pregrade reasoning</div><div class="row">' + photoPregrade.reasons.map(function (reason) { return '<span class="pill">' + escapeHtml(reason) + '</span>'; }).join('') + '</div></div>' : '',
     '</div>',
     '</div>',
     '<div>',
@@ -1555,6 +1640,7 @@ function renderAll() {
   renderSourceHealth();
   renderDetail();
   renderFeedbackList();
+  renderCrossListDrafts();
 }
 
 function setChoiceHighlights(form) {
@@ -1650,6 +1736,7 @@ async function refresh(options) {
       renderQueue();
       renderSourceHealth();
       renderFeedbackList();
+      renderCrossListDrafts();
       renderStatus();
       return;
     }
@@ -1867,6 +1954,8 @@ export function renderDashboardHtml(): string {
           <div id="detail-view"></div>
           <h2>Alex Notes</h2>
           <div id="feedback-list"></div>
+          <h2>Cross-list drafts</h2>
+          <div id="draft-list"></div>
         </section>
       </main>
     </div>

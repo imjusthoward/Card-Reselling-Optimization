@@ -8,6 +8,7 @@ import {
   formatTraderReviewPacket,
   scoreBatch,
   type CalibrationInput,
+  type CrossListDraft,
   type NotificationChannel,
   type OpportunityListing,
   type OpportunityScore,
@@ -17,10 +18,14 @@ import {
   type ShrinkWrapState,
   type ScoringConfig,
   type FeedbackSignalSummary,
+  type SentimentFeedItem,
+  type SentimentSummary,
   type TraderLabel,
   type WatchlistEntry
 } from './index.js'
 import { createArtifactStore, type ArtifactStore } from './artifacts.js'
+import { buildCrossListDrafts } from './crosslist.js'
+import { analyzeSentimentFeed } from './sentiment.js'
 import {
   DEFAULT_CONFIG_PATH,
   DEFAULT_LABELS_PATH,
@@ -66,6 +71,7 @@ export interface LiveScanOptions {
   artifactStore?: ArtifactStore
   alexWebhookUrl?: string
   notifyAlex?: boolean
+  sentimentPath?: string
   fetchImpl?: typeof fetch
   now?: () => Date
 }
@@ -74,6 +80,8 @@ export interface LiveScanResult {
   scanId: string
   generatedAt: string
   feedbackSignals?: FeedbackSignalSummary
+  sentimentSummary?: SentimentSummary
+  crossListDrafts?: CrossListDraft[]
   watchlist: WatchlistEntry[]
   sourceSummaries: LiveSourceSummary[]
   scrapedListings: ScrapedListing[]
@@ -1282,8 +1290,10 @@ function buildAlexDigest(
   generatedAt: string,
   report: ReturnType<typeof buildMvpReport>,
   feedbackSignals: FeedbackSignalSummary,
+  sentimentSummary: SentimentSummary,
   notifications: ReturnType<typeof buildNotificationPayload>[],
   reviews: ReturnType<typeof buildTraderReviewPacket>[],
+  crossListDrafts: CrossListDraft[],
   sourceSummaries: LiveSourceSummary[],
   opportunities: OpportunityListing[],
   unavailableSources: string[]
@@ -1316,6 +1326,8 @@ function buildAlexDigest(
     `precision=${report.matched.precision == null ? 'n/a' : `${(report.matched.precision * 100).toFixed(1)}%`} | falsePositiveRate=${report.matched.falsePositiveRate == null ? 'n/a' : `${(report.matched.falsePositiveRate * 100).toFixed(1)}%`}`,
     `calibrationLabels=${report.labels.totalLabels}`,
     `feedbackSignals=sealMissing ${feedbackSignals.sealMissingCount} | sellerRisk ${feedbackSignals.sellerRiskCount} | packMismatch ${feedbackSignals.packMismatchCount} | photoRisk ${feedbackSignals.photoRiskCount} | conditionMismatch ${feedbackSignals.conditionMismatchCount}`,
+    `sentiment=posts ${sentimentSummary.totalPosts} | bullish ${sentimentSummary.bullishPosts} | bearish ${sentimentSummary.bearishPosts} | net ${sentimentSummary.netScore}`,
+    `crosslist=${crossListDrafts.length} draft${crossListDrafts.length === 1 ? '' : 's'} | approval-only`,
     `coverage=raw ${riskGroupCounts.raw} | slab ${riskGroupCounts.slab} | sealed ${riskGroupCounts.sealed}`,
     compactSourceSummary.length > 0 ? `sources=${compactSourceSummary}` : 'sources=none',
     unavailableSummary.length > 0 ? `source-notes=${unavailableSummary.join(' | ')}` : 'source-notes=none',
@@ -1653,6 +1665,18 @@ export async function runLiveScan(
   const alexFeedback = await listAlexFeedback(artifactStore, 100)
   const calibrationLabels = dedupeCalibrationLabels([...alexFeedback, ...labels])
   const feedbackSignals = collectFeedbackSignalSummary(alexFeedback)
+  let sentimentFeed: SentimentFeedItem[] = []
+  if (options.sentimentPath) {
+    try {
+      sentimentFeed = await loadJson<SentimentFeedItem[]>(
+        resolveWorkflowPath(options.sentimentPath, options.sentimentPath)
+      )
+    } catch (error) {
+      if (!String((error as Error).message || error).includes('Missing file')) {
+        throw error
+      }
+    }
+  }
   const scoringConfig = await loadJson<Partial<ScoringConfig & CalibrationInput>>(
     resolveWorkflowPath(options.configPath, DEFAULT_CONFIG_PATH)
   )
@@ -1665,6 +1689,7 @@ export async function runLiveScan(
   const fetchTimeoutMs = options.fetchTimeoutMs ?? 12_000
   const maxNotifications = options.maxNotifications ?? 5
   const maxReviews = options.maxReviews ?? 5
+  const sentimentSummary = analyzeSentimentFeed(sentimentFeed, selectedWatchlist)
 
   const tasks = buildSearchTasks(selectedWatchlist, sourceFilter, queryStrategy)
   const taskResults = await runWithConcurrency(tasks, searchConcurrency, async task => {
@@ -1775,8 +1800,14 @@ export async function runLiveScan(
     buildOpportunityListing(entry.listing, entry.watchlist, generatedAt, entry.query)
   )
 
-  const scores = scoreBatch(opportunities, calibration, scoringConfig, feedbackSignals)
-  const limitedScores = scores
+  const scores = scoreBatch(
+    opportunities,
+    calibration,
+    scoringConfig,
+    feedbackSignals,
+    sentimentSummary
+  )
+  const limitedScores = scores.slice(0, Math.max(maxNotifications, maxReviews))
   const report = buildMvpReport(limitedScores, calibrationLabels)
   const notifications = limitedScores
     .filter(score => score.recommendation === 'buy')
@@ -1786,13 +1817,16 @@ export async function runLiveScan(
     .filter(score => score.recommendation !== 'pass')
     .slice(0, maxReviews)
     .map(score => buildTraderReviewPacket(score))
+  const crossListDrafts = buildCrossListDrafts(scores)
   const alexDigest = buildAlexDigest(
     scanId,
     generatedAt,
     report,
     feedbackSignals,
+    sentimentSummary,
     notifications,
     reviews,
+    crossListDrafts,
     sourceSummaries,
     opportunities,
     unavailableSources
@@ -1810,8 +1844,10 @@ export async function runLiveScan(
     scores: limitedScores,
     report,
     feedbackSignals,
+    sentimentSummary,
     notifications,
     reviews,
+    crossListDrafts,
     alexDigest,
     unavailableSources
   })
@@ -1825,8 +1861,10 @@ export async function runLiveScan(
     scores: limitedScores,
     report,
     feedbackSignals,
+    sentimentSummary,
     notifications,
     reviews,
+    crossListDrafts,
     alexDigest,
     unavailableSources
   })
@@ -1834,8 +1872,10 @@ export async function runLiveScan(
     scanId,
     generatedAt,
     feedbackSignals,
+    sentimentSummary,
     notifications,
     reviews,
+    crossListDrafts,
     alexDigest,
     sourceSummaries
   })
@@ -1843,8 +1883,10 @@ export async function runLiveScan(
     scanId,
     generatedAt,
     feedbackSignals,
+    sentimentSummary,
     notifications,
     reviews,
+    crossListDrafts,
     alexDigest,
     sourceSummaries
   })
@@ -1861,6 +1903,7 @@ export async function runLiveScan(
         text: alexDigest,
         notifications,
         reviews,
+        crossListDrafts,
         sourceSummaries
       }),
       signal: AbortSignal.timeout(fetchTimeoutMs)
@@ -1886,6 +1929,8 @@ export async function runLiveScan(
     report,
     notifications,
     reviews,
+    sentimentSummary,
+    crossListDrafts,
     alexDigest,
     scanArtifactPath,
     inboxArtifactPath,

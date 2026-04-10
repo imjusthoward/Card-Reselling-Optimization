@@ -3,6 +3,7 @@ import {
   type Recommendation,
   type TraderLabel
 } from './types.js'
+import { formatPhotoPregrade } from './pregrader.js'
 
 export const NOTIFICATION_CHANNELS = [
   'dashboard',
@@ -261,6 +262,10 @@ export function buildTraderReviewPacket(
     )
   }
 
+  if (score.photoPregrade) {
+    addEvidence(evidence, `photo pregrade ${formatPhotoPregrade(score.photoPregrade)}`)
+  }
+
   const stage = classifyOpportunityStage(score)
   const question =
     stage === 'notify'
@@ -442,9 +447,11 @@ export function buildInfrastructureChecklist(): InfrastructureChecklist {
     ],
     recommendedSoon: [
       'a simple review dashboard for top buy and watch candidates',
+      'an approval-only cross-list draft queue for high-confidence items',
       'persistent storage beyond JSON files once multiple operators are involved',
       'a queue or job runner if listing volume rises',
-      'object storage only if you start retaining listing images for OCR'
+      'object storage only if you start retaining listing images for OCR',
+      'optional sentiment feeds from exported channel posts once backtests prove lift'
     ],
     deferUntilLater: [
       'managed OCR or vision services for image triage',

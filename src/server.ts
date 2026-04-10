@@ -43,6 +43,7 @@ interface RuntimeConfig {
   liveFetchTimeoutMs?: number
   liveMaxNotifications?: number
   liveMaxReviews?: number
+  sentimentPath?: string
 }
 
 interface RuntimeSummary {
@@ -111,7 +112,8 @@ function getRuntimeConfig(): RuntimeConfig {
     liveSearchConcurrency: parseOptionalInt(process.env.ARB_SEARCH_CONCURRENCY),
     liveFetchTimeoutMs: parseOptionalInt(process.env.ARB_FETCH_TIMEOUT_MS),
     liveMaxNotifications: parseOptionalInt(process.env.ARB_MAX_NOTIFICATIONS),
-    liveMaxReviews: parseOptionalInt(process.env.ARB_MAX_REVIEWS)
+    liveMaxReviews: parseOptionalInt(process.env.ARB_MAX_REVIEWS),
+    sentimentPath: process.env.ARB_SENTIMENT_PATH?.trim() || undefined
   }
 }
 
@@ -403,6 +405,7 @@ async function handleRequest(
       fetchTimeoutMs: config.liveFetchTimeoutMs,
       maxNotifications: config.liveMaxNotifications,
       maxReviews: config.liveMaxReviews,
+      sentimentPath: config.sentimentPath,
       notificationChannel: config.channel,
       artifactStore,
       alexWebhookUrl: config.alexWebhookUrl,

@@ -37,6 +37,7 @@ interface JobConfig {
   output: 'summary' | 'notify' | 'review' | 'bundle'
   notifyAlex: boolean
   alexWebhookUrl?: string
+  sentimentPath?: string
 }
 
 function parseOptionalInt(value: string | undefined): number | undefined {
@@ -133,7 +134,8 @@ function getJobConfig(): JobConfig {
         ? output
         : 'summary',
     notifyAlex: parseBoolean(process.env.ARB_NOTIFY_ALEX, false),
-    alexWebhookUrl: process.env.ARB_ALEX_WEBHOOK_URL?.trim() || undefined
+    alexWebhookUrl: process.env.ARB_ALEX_WEBHOOK_URL?.trim() || undefined,
+    sentimentPath: process.env.ARB_SENTIMENT_PATH?.trim() || undefined
   }
 }
 
@@ -207,12 +209,13 @@ async function main(): Promise<void> {
     sourceFilter: config.sourceFilter,
     limitPerQuery: config.limitPerQuery,
     searchConcurrency: config.searchConcurrency,
-    fetchTimeoutMs: config.fetchTimeoutMs,
-    maxNotifications: config.maxNotifications,
-    maxReviews: config.maxReviews,
-    notificationChannel: config.channel,
-    artifactStore,
-    alexWebhookUrl: config.alexWebhookUrl,
+      fetchTimeoutMs: config.fetchTimeoutMs,
+      maxNotifications: config.maxNotifications,
+      maxReviews: config.maxReviews,
+      sentimentPath: config.sentimentPath,
+      notificationChannel: config.channel,
+      artifactStore,
+      alexWebhookUrl: config.alexWebhookUrl,
     notifyAlex: config.notifyAlex
   })
   const state = await loadLiveState(artifactStore)
