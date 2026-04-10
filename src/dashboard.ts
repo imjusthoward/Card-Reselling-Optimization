@@ -1,3 +1,145 @@
+import type { FeedbackEntry } from './live.js'
+
+interface DashboardQueueItem {
+  listingId: string
+}
+
+function escapeHtml(value: unknown): string {
+  return String(value == null ? '' : value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+}
+
+function formatClock(value?: string): string {
+  if (!value) {
+    return 'unknown'
+  }
+
+  const date = new Date(value)
+  if (!Number.isFinite(date.getTime())) {
+    return 'unknown'
+  }
+
+  return new Intl.DateTimeFormat('en-GB', {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false
+  }).format(date)
+}
+
+function summarizeFeedback(labels: FeedbackEntry[]) {
+  const summary = {
+    total: 0,
+    authentic: 0,
+    fake: 0,
+    uncertainAuthenticity: 0,
+    clean: 0,
+    damaged: 0,
+    uncertainCondition: 0,
+    buy: 0,
+    watch: 0,
+    pass: 0
+  }
+
+  labels.forEach(entry => {
+    if (!entry) {
+      return
+    }
+
+    summary.total += 1
+    if (entry.authenticity === 'authentic') {
+      summary.authentic += 1
+    } else if (entry.authenticity === 'fake') {
+      summary.fake += 1
+    } else {
+      summary.uncertainAuthenticity += 1
+    }
+
+    if (entry.condition === 'clean') {
+      summary.clean += 1
+    } else if (entry.condition === 'damaged') {
+      summary.damaged += 1
+    } else {
+      summary.uncertainCondition += 1
+    }
+
+    if (entry.recommendedAction === 'buy') {
+      summary.buy += 1
+    } else if (entry.recommendedAction === 'watch') {
+      summary.watch += 1
+    } else if (entry.recommendedAction === 'pass') {
+      summary.pass += 1
+    }
+  })
+
+  return summary
+}
+
+export function buildFeedbackListHtml(labels: FeedbackEntry[]): string {
+  if (!labels.length) {
+    return '<div class="empty"><strong>No labeled feedback yet.</strong><div class="subtle">Alex can add the first review after the initial live queue loads.</div></div>'
+  }
+
+  const summary = summarizeFeedback(labels)
+  const summaryCountText = `${summary.total} labels`
+
+  return [
+    '<div class="feedback-summary">',
+    '<div class="meta">',
+    `<span class="pill">feedback ${summaryCountText}</span>`,
+    `<span class="pill">auth ${summary.authentic}/${summary.fake}/${summary.uncertainAuthenticity}</span>`,
+    `<span class="pill">condition ${summary.clean}/${summary.damaged}/${summary.uncertainCondition}</span>`,
+    `<span class="pill">action ${summary.buy}/${summary.watch}/${summary.pass}</span>`,
+    '</div>',
+    '<strong>Calibration feed</strong>',
+    '<div class="subtle">Alex labels are used in the next calibration pass and stay visible here for review.</div>',
+    '</div>',
+    labels.map(entry => {
+      const reviewedAt = entry.reviewedAt ? formatClock(entry.reviewedAt) : 'n/a'
+      const note = entry.notes || entry.followUp || 'No notes provided.'
+      const sourceQuery = entry.sourceQuery || 'no query'
+      const sourceListingId = entry.sourceListingId || 'n/a'
+
+      return [
+        '<div class="card feedback-row">',
+        '<div class="meta">',
+        `<span class="pill">${escapeHtml(entry.authenticity || 'uncertain')}</span>`,
+        `<span class="pill">${escapeHtml(entry.condition || 'uncertain')}</span>`,
+        `<span class="pill">${escapeHtml(entry.recommendedAction || 'watch')}</span>`,
+        `<span class="pill timestamp">${escapeHtml(reviewedAt)}</span>`,
+        '</div>',
+        `<div class="title" style="font-size: 0.95rem; margin-top: 4px;">${escapeHtml(entry.listingId || 'unknown listing')}</div>`,
+        `<div class="subtle">${escapeHtml(note)}</div>`,
+        '<div class="row">',
+        `<span class="pill">${escapeHtml(entry.marketplace || 'other')}</span>`,
+        `<span class="pill">${escapeHtml(entry.riskGroup || 'raw')}</span>`,
+        `<span class="pill">${escapeHtml(sourceQuery)}</span>`,
+        `<span class="pill">source ${escapeHtml(sourceListingId)}</span>`,
+        '</div>',
+        '</div>'
+      ].join('')
+    }).join('')
+  ].join('')
+}
+
+export function resolveSelectedIdAfterRefresh(
+  currentSelectedId: string | null,
+  items: DashboardQueueItem[],
+  preserveDetail: boolean
+): string | null {
+  if (preserveDetail) {
+    return currentSelectedId
+  }
+
+  return items.some(item => item.listingId === currentSelectedId)
+    ? currentSelectedId
+    : (items[0] ? items[0].listingId : null)
+}
+
 const DASHBOARD_CSS = String.raw`
 :root {
   color-scheme: light;
@@ -721,6 +863,52 @@ function summarizeFeedback(labels) {
   return summary;
 }
 
+function buildFeedbackListHtml(labels) {
+  if (!labels.length) {
+    return '<div class="empty"><strong>No labeled feedback yet.</strong><div class="subtle">Alex can add the first review after the initial live queue loads.</div></div>';
+  }
+
+  var summary = summarizeFeedback(labels);
+  var summaryCountText = String(summary.total) + ' labels';
+
+  return [
+    '<div class="feedback-summary">',
+    '<div class="meta">',
+    '<span class="pill">feedback ' + summaryCountText + '</span>',
+    '<span class="pill">auth ' + String(summary.authentic) + '/' + String(summary.fake) + '/' + String(summary.uncertainAuthenticity) + '</span>',
+    '<span class="pill">condition ' + String(summary.clean) + '/' + String(summary.damaged) + '/' + String(summary.uncertainCondition) + '</span>',
+    '<span class="pill">action ' + String(summary.buy) + '/' + String(summary.watch) + '/' + String(summary.pass) + '</span>',
+    '</div>',
+    '<strong>Calibration feed</strong>',
+    '<div class="subtle">Alex labels are used in the next calibration pass and stay visible here for review.</div>',
+    '</div>',
+    labels.map(function (entry) {
+      var reviewedAt = entry.reviewedAt ? formatClock(entry.reviewedAt) : 'n/a';
+      var note = entry.notes || entry.followUp || 'No notes provided.';
+      var sourceQuery = entry.sourceQuery || 'no query';
+      var sourceListingId = entry.sourceListingId || 'n/a';
+      return [
+        '<div class="card feedback-row">',
+        '<div class="meta">',
+        '<span class="pill">' + escapeHtml(entry.authenticity || 'uncertain') + '</span>',
+        '<span class="pill">' + escapeHtml(entry.condition || 'uncertain') + '</span>',
+        '<span class="pill">' + escapeHtml(entry.recommendedAction || 'watch') + '</span>',
+        '<span class="pill timestamp">' + escapeHtml(reviewedAt) + '</span>',
+        '</div>',
+        '<div class="title" style="font-size: 0.95rem; margin-top: 4px;">' + escapeHtml(entry.listingId || 'unknown listing') + '</div>',
+        '<div class="subtle">' + escapeHtml(note) + '</div>',
+        '<div class="row">',
+        '<span class="pill">' + escapeHtml(entry.marketplace || 'other') + '</span>',
+        '<span class="pill">' + escapeHtml(entry.riskGroup || 'raw') + '</span>',
+        '<span class="pill">' + escapeHtml(sourceQuery) + '</span>',
+        '<span class="pill">source ' + escapeHtml(sourceListingId) + '</span>',
+        '</div>',
+        '</div>'
+      ].join('');
+    }).join('')
+  ].join('');
+}
+
 function renderSourceHealth() {
   if (!nodes.health) {
     return;
@@ -981,49 +1169,17 @@ function renderQueue() {
 }
 
 function renderFeedbackList() {
-  if (!state.feedback.length) {
-    nodes.feedback.innerHTML = '<div class="empty"><strong>No labeled feedback yet.</strong><div class="subtle">Alex can add the first review after the initial live queue loads.</div></div>';
-    return;
+  nodes.feedback.innerHTML = buildFeedbackListHtml(state.feedback);
+}
+
+function resolveSelectedIdAfterRefresh(currentSelectedId, items, preserveDetail) {
+  if (preserveDetail) {
+    return currentSelectedId;
   }
 
-  var summary = summarizeFeedback(state.feedback);
-  var summaryCountText = String(summary.total) + ' labels';
-  nodes.feedback.innerHTML = [
-    '<div class="feedback-summary">',
-    '<div class="meta">',
-    '<span class="pill">feedback ' + summaryCountText + '</span>',
-    '<span class="pill">auth ' + String(summary.authentic) + '/' + String(summary.fake) + '/' + String(summary.uncertainAuthenticity) + '</span>',
-    '<span class="pill">condition ' + String(summary.clean) + '/' + String(summary.damaged) + '/' + String(summary.uncertainCondition) + '</span>',
-    '<span class="pill">action ' + String(summary.buy) + '/' + String(summary.watch) + '/' + String(summary.pass) + '</span>',
-    '</div>',
-    '<strong>Calibration feed</strong>',
-    '<div class="subtle">Alex labels are used in the next calibration pass and stay visible here for review.</div>',
-    '</div>',
-    state.feedback.map(function (entry) {
-      var reviewedAt = entry.reviewedAt ? formatClock(entry.reviewedAt) : 'n/a';
-      var note = entry.notes || entry.followUp || 'No notes provided.';
-      var sourceQuery = entry.sourceQuery || 'no query';
-      var sourceListingId = entry.sourceListingId || 'n/a';
-      return [
-        '<div class="card feedback-row">',
-        '<div class="meta">',
-        '<span class="pill">' + escapeHtml(entry.authenticity || 'uncertain') + '</span>',
-        '<span class="pill">' + escapeHtml(entry.condition || 'uncertain') + '</span>',
-        '<span class="pill">' + escapeHtml(entry.recommendedAction || 'watch') + '</span>',
-        '<span class="pill timestamp">' + escapeHtml(reviewedAt) + '</span>',
-        '</div>',
-        '<div class="title" style="font-size: 0.95rem; margin-top: 4px;">' + escapeHtml(entry.listingId || 'unknown listing') + '</div>',
-        '<div class="subtle">' + escapeHtml(note) + '</div>',
-        '<div class="row">',
-        '<span class="pill">' + escapeHtml(entry.marketplace || 'other') + '</span>',
-        '<span class="pill">' + escapeHtml(entry.riskGroup || 'raw') + '</span>',
-        '<span class="pill">' + escapeHtml(sourceQuery) + '</span>',
-        '<span class="pill">source ' + escapeHtml(sourceListingId) + '</span>',
-        '</div>',
-        '</div>'
-      ].join('');
-    }).join('')
-  ].join('');
+  return items.some(function (item) { return item.listingId === currentSelectedId; })
+    ? currentSelectedId
+    : (items[0] ? items[0].listingId : null);
 }
 
 function renderDetail() {
@@ -1242,11 +1398,10 @@ async function refresh(options) {
     state.items = buildItems(state.latest);
     state.lastSyncedAt = new Date().toISOString();
     state.loading = false;
-    state.selectedId = state.items.some(function (item) { return item.listingId === state.selectedId; })
-      ? state.selectedId
-      : (state.items[0] ? state.items[0].listingId : null);
+    var preserveDetail = shouldPreserveDetailOnRefresh();
+    state.selectedId = resolveSelectedIdAfterRefresh(state.selectedId, state.items, preserveDetail);
 
-    if (shouldPreserveDetailOnRefresh()) {
+    if (preserveDetail) {
       renderQueue();
       renderSourceHealth();
       renderFeedbackList();

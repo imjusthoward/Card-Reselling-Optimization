@@ -261,6 +261,71 @@ describe('live scan', () => {
     expect(result.alexDigest).toContain('sources=')
   })
 
+  it('lets the newest Alex label supersede earlier feedback on the same listing', async () => {
+    const watchlistPath = await createTempWatchlist()
+    const labelsPath = await createTempLabelsFile([])
+    const artifactStore = new MemoryArtifactStore()
+    const fetchImpl = makeFetch()
+
+    await artifactStore.writeJson('feedback/latest.json', [
+      {
+        listingId: 'snkrdunk:567433',
+        marketplace: 'snkrdunk',
+        riskGroup: 'sealed',
+        authenticity: 'authentic',
+        condition: 'clean',
+        recommendedAction: 'pass',
+        confidence: 0.95,
+        notes: 'Latest correction: shrink wrap missing, but authenticity is fine.',
+        sourceUrl: 'https://snkrdunk.com/apparels/567433',
+        sourceListingId: '567433',
+        sourceQuery: 'ポケモンカード151 ボックス',
+        reviewer: 'alex',
+        reviewedAt: '2026-04-09T10:20:40.893Z'
+      },
+      {
+        listingId: 'snkrdunk:567433',
+        marketplace: 'snkrdunk',
+        riskGroup: 'sealed',
+        authenticity: 'fake',
+        condition: 'damaged',
+        recommendedAction: 'pass',
+        confidence: 0.9,
+        notes: 'Old mistaken label that should be ignored for calibration.',
+        sourceUrl: 'https://snkrdunk.com/apparels/567433',
+        sourceListingId: '567433',
+        sourceQuery: 'ポケモンカード151 ボックス',
+        reviewer: 'alex',
+        reviewedAt: '2026-04-09T10:10:40.893Z'
+      }
+    ])
+
+    const result = await runLiveScan({
+      watchlistPath,
+      labelsPath,
+      configPath: 'data/scoring-config.json',
+      watchlistLimit: 1,
+      queryStrategy: 'primary',
+      sourceFilter: ['yahoo_flea', 'snkrdunk'],
+      limitPerQuery: 5,
+      searchConcurrency: 2,
+      fetchTimeoutMs: 2000,
+      maxNotifications: 5,
+      maxReviews: 5,
+      artifactStore,
+      fetchImpl,
+      notifyAlex: false
+    })
+
+    expect(result.report.labels.totalLabels).toBe(1)
+    const targetScore = result.scores.find(
+      score => score.listing.marketplace === 'snkrdunk' && score.listing.riskGroup === 'sealed'
+    )
+    expect(targetScore).toBeDefined()
+    expect(targetScore?.authProbability).toBeGreaterThan(0.9)
+    expect(targetScore?.cleanProbability).toBeGreaterThan(0.7)
+  })
+
   it('marks mercari as unsupported in the scan digest when the public HTML has no cards', async () => {
     const watchlistPath = await createTempWatchlist([
       {

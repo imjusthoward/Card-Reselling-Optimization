@@ -967,6 +967,23 @@ export async function listAlexFeedback(
   return entries.slice(0, limit)
 }
 
+export function dedupeCalibrationLabels(labels: TraderLabel[]): TraderLabel[] {
+  const seenListingIds = new Set<string>()
+  const deduped: TraderLabel[] = []
+
+  for (const label of labels) {
+    const listingId = label.listingId?.trim()
+    if (!listingId || seenListingIds.has(listingId)) {
+      continue
+    }
+
+    seenListingIds.add(listingId)
+    deduped.push(label)
+  }
+
+  return deduped
+}
+
 export async function runLiveScan(
   options: LiveScanOptions = {}
 ): Promise<LiveScanResult> {
@@ -981,7 +998,7 @@ export async function runLiveScan(
     resolveWorkflowPath(options.labelsPath, DEFAULT_LABELS_PATH)
   )
   const alexFeedback = await listAlexFeedback(artifactStore, 100)
-  const calibrationLabels = [...labels, ...alexFeedback]
+  const calibrationLabels = dedupeCalibrationLabels([...alexFeedback, ...labels])
   const scoringConfig = await loadJson<Partial<ScoringConfig & CalibrationInput>>(
     resolveWorkflowPath(options.configPath, DEFAULT_CONFIG_PATH)
   )
